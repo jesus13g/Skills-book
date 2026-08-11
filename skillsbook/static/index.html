@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skills Book — biblioteca local de skills</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <header class="sidebar-head">
+      <div class="brand">
+        <span class="brand-mark">📚</span>
+        <div>
+          <h1>Skills Book</h1>
+          <p id="library-path" class="muted mono"></p>
+        </div>
+      </div>
+      <div class="search-row">
+        <input id="search" type="search" placeholder="Buscar skills…  (/)" autocomplete="off">
+        <button id="btn-deep-search" class="ghost" title="Buscar dentro de los archivos">⌕</button>
+      </div>
+      <div id="filters" class="filters"></div>
+    </header>
+
+    <div id="skill-list" class="skill-list"></div>
+
+    <footer class="sidebar-foot">
+      <button id="btn-new" class="primary">+ Nueva skill</button>
+      <button id="btn-import" class="ghost" title="Importar zip o carpeta">Importar</button>
+      <button id="btn-export-all" class="ghost" title="Descargar toda la biblioteca">Exportar</button>
+    </footer>
+  </aside>
+
+  <main id="main" class="main">
+    <div id="empty" class="empty">
+      <div class="empty-inner">
+        <span class="empty-mark">📚</span>
+        <h2>Tu biblioteca de skills</h2>
+        <p>Guarda, revisa y edita las skills de tus agentes — Claude, ChatGPT, opencode y cualquier otro — con sus scripts y documentos de apoyo.</p>
+        <div id="empty-stats" class="stat-row"></div>
+        <button class="primary" data-action="new">Crear la primera skill</button>
+      </div>
+    </div>
+    <div id="detail" class="detail hidden"></div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toasts" class="toasts"></div>
+
+<script src="/markdown.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
