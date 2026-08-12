@@ -43,6 +43,13 @@
           "Segoe UI Variable Text", "Segoe UI", Roboto, "Noto Sans",
           "DejaVu Sans", system-ui, sans-serif;
 
+  /* --- columnas ----------------------------------------------------- */
+  /* La cabecera y el cuerpo de una skill comparten eje y anchura: así el
+     título, la descripción, las pestañas y el markdown quedan alineados y
+     centrados en el contenedor, en vez de pegados a un lado. */
+  --measure: min(100%, 820px);        /* columna de lectura */
+  --measure-wide: min(100%, 1120px);  /* árbol + editor de archivos */
+
   /* --- geometría ---------------------------------------------------- */
   --hair: 1px;
   --rule: 2px;
@@ -480,6 +487,19 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
   background: var(--void);
   border-bottom: var(--rule) solid var(--line);
 }
+/* Todo lo que vive en la columna de lectura se centra sobre el mismo eje. */
+.detail-title, .detail-desc, .detail-meta, .tabs,
+.tab-body > .md, .tab-body > .meta-strip, .tab-body > .hit,
+.tab-body > .list-empty, .tab-body > .form {
+  max-width: var(--measure);
+  margin-inline: auto;
+}
+/* El árbol y el editor necesitan más sitio que una columna de lectura. */
+.tab-body > .files {
+  max-width: var(--measure-wide);
+  margin-inline: auto;
+}
+
 .detail-title { display: flex; align-items: flex-start; gap: 16px; }
 .detail-title h2 {
   margin: 0;
@@ -508,9 +528,8 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 }
 .detail-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 .detail-desc {
-  margin: 16px 0 0;
+  margin: 16px auto 0;
   color: var(--fg-2);
-  max-width: 78ch;
   font-size: 14px;
   padding-left: 13px;
   border-left: var(--rule) solid var(--acc);
@@ -541,7 +560,7 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 .tab-body { padding: 30px 32px; }
 
 /* ---------------------------------------------------------------- markdown */
-.md { max-width: 80ch; font-size: 14.5px; line-height: 1.65; color: #e2e2e0; }
+.md { font-size: 14.5px; line-height: 1.72; color: #e2e2e0; }
 .md h1, .md h2, .md h3, .md h4 {
   line-height: 1.15;
   margin: 2em 0 .6em;
@@ -631,7 +650,6 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 
 .meta-strip {
   display: flex; flex-wrap: wrap; gap: 6px 20px;
-  max-width: 80ch;
   margin-top: 30px;
   padding-top: 14px;
   border-top: var(--hair) solid var(--line);
@@ -767,7 +785,7 @@ textarea.code:focus { outline: none; background: var(--sunken); }
 }
 
 /* ------------------------------------------------------------------ forms */
-.form { max-width: 780px; display: grid; gap: 18px; }
+.form { display: grid; gap: 18px; }
 .field { display: grid; gap: 6px; align-content: start; }
 .field label {
   font-family: var(--mono);
