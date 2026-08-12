@@ -109,6 +109,28 @@ Las claves que no conoce la app (por ejemplo `model:` o `x-origen:`) **se conser
 
 ---
 
+## La interfaz
+
+Brutalismo moderno, solo en oscuro. Las reglas del sistema, por si tocas el CSS:
+
+- **Geometría a cero radios.** Todo es caja; el borde es estructura, no adorno. Las sombras
+  son duras y desplazadas (`4px 4px 0`), nunca difuminadas.
+- **Dos voces tipográficas.** La interfaz (etiquetas, botones, rutas, árbol) habla en
+  monoespaciada, en versalitas y con tracking abierto; la prosa larga —descripciones y el
+  markdown de la skill— va en grotesca. Ambas pilas resuelven contra fuentes ya instaladas:
+  ni una petición a internet.
+- **Un solo acento.** Naranja de alta energía para lo accionable y lo seleccionado; el resto
+  del color se reserva para señales (guardado sin confirmar, error, correcto).
+- **Simbología en SVG.** Todos los iconos salen de un sprite `<symbol>` incrustado en
+  `index.html` y heredan el color del texto. No hay emojis en la interfaz.
+- **Movimiento contenido.** Solo desplazamientos de 2 px con sombra dura al pasar por encima,
+  y todo se desactiva con `prefers-reduced-motion`.
+
+Los tokens (superficies, líneas, tinta, señal, tipografía y geometría) están al principio de
+`styles.css`: cambiando ese bloque cambia el tema entero.
+
+---
+
 ## API
 
 La interfaz es solo un cliente de esta API; puedes usarla desde `curl` o tus propios scripts.
@@ -179,7 +201,7 @@ skillsbook/
 ├── frontmatter.py    # lectura/escritura del YAML de cabecera
 └── static/
     ├── index.html
-    ├── styles.css    # tema claro y oscuro automáticos
+    ├── styles.css    # sistema visual: brutalismo moderno, tema oscuro
     ├── app.js        # interfaz
     └── markdown.js   # renderizador de markdown
 skills/               # tu biblioteca (incluye 3 skills de ejemplo)

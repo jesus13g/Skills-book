@@ -6,6 +6,10 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  /* Simbología: solo SVG del sprite de index.html, nunca emojis. */
+  const ic = (name, extra = '') =>
+    `<svg class="ic ${extra}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
   const state = {
     skills: [],
     stats: null,
@@ -41,7 +45,8 @@
   function toast(message, isError = false) {
     const node = document.createElement('div');
     node.className = 'toast' + (isError ? ' err' : '');
-    node.textContent = message;
+    node.innerHTML = `${ic(isError ? 'alert' : 'check', 'ic-sm')}<span></span>`;
+    $('span', node).textContent = message;
     $('#toasts').appendChild(node);
     setTimeout(() => node.remove(), isError ? 6000 : 3000);
   }
@@ -60,7 +65,11 @@
   function modal(title, innerHtml, onMount) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
-    backdrop.innerHTML = `<div class="modal"><h3>${esc(title)}</h3>${innerHtml}</div>`;
+    backdrop.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <div class="modal-head"><h3>${esc(title)}</h3></div>
+        <div class="modal-body">${innerHtml}</div>
+      </div>`;
     const close = () => backdrop.remove();
     backdrop.addEventListener('mousedown', (event) => {
       if (event.target === backdrop) close();
@@ -81,7 +90,7 @@
         <div class="form">
           <div class="field"><label>${esc(label)}</label><input id="ask-input" value="${esc(value)}"></div>
           <div class="form-actions">
-            <button class="primary" id="ask-ok">Aceptar</button>
+            <button class="primary" id="ask-ok">${ic('check', 'ic-sm')}Aceptar</button>
             <button class="ghost" id="ask-cancel">Cancelar</button>
           </div>
         </div>`, (root, close) => {
@@ -99,7 +108,7 @@
       modal(title, `
         <p class="muted">${esc(message)}</p>
         <div class="form-actions">
-          <button class="danger" id="c-ok">${esc(confirmLabel)}</button>
+          <button class="danger" id="c-ok">${ic('trash', 'ic-sm')}${esc(confirmLabel)}</button>
           <button class="ghost" id="c-no">Cancelar</button>
         </div>`, (root, close) => {
         $('#c-ok', root).onclick = () => { close(); resolve(true); };
@@ -125,7 +134,8 @@
     const agents = Object.keys(state.stats.agents || {}).filter((a) => a !== 'sin-agente');
     const tags = Object.keys(state.stats.tags || {}).slice(0, 12);
     const chip = (label, kind, count) =>
-      `<button class="chip${state.filters[kind].has(label) ? ' on' : ''}" data-filter="${kind}" data-value="${esc(label)}">${esc(label)}${count ? ` ${count}` : ''}</button>`;
+      `<button class="chip${state.filters[kind].has(label) ? ' on' : ''}" data-filter="${kind}" data-value="${esc(label)}">${
+        esc(label)}${count ? `<span class="count">${count}</span>` : ''}</button>`;
     $('#filters').innerHTML =
       agents.map((a) => chip(a, 'agents', state.stats.agents[a])).join('') +
       tags.map((t) => chip('#' + t, 'tags', 0)).join('');
@@ -163,8 +173,8 @@
   function renderList() {
     const skills = visibleSkills();
     if (!skills.length) {
-      $('#skill-list').innerHTML = `<p class="muted" style="padding:14px;text-align:center">${
-        state.skills.length ? 'Ninguna skill coincide con el filtro.' : 'Todavía no hay skills.'}</p>`;
+      $('#skill-list').innerHTML = `<p class="list-empty">${
+        state.skills.length ? 'Ninguna skill coincide' : 'Biblioteca vacía'}</p>`;
       return;
     }
     $('#skill-list').innerHTML = skills.map((skill) => `
@@ -173,8 +183,8 @@
         <p>${esc(skill.description || 'Sin descripción')}</p>
         <div class="meta">
           ${skill.agents.map((a) => `<span class="tag agent">${esc(a)}</span>`).join('')}
-          ${skill.tags.slice(0, 3).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}
-          ${skill.file_count > 1 ? `<span class="tag">${skill.file_count} archivos</span>` : ''}
+          ${skill.tags.slice(0, 3).map((t) => `<span class="tag">${ic('hash')}${esc(t)}</span>`).join('')}
+          ${skill.file_count > 1 ? `<span class="tag">${ic('file')}${skill.file_count}</span>` : ''}
         </div>
       </article>`).join('');
     $$('#skill-list .skill-card').forEach((node) => {
@@ -217,31 +227,36 @@
 
   function renderDetail() {
     const skill = state.current;
-    const tabs = [['view', 'Contenido'], ['files', 'Archivos'], ['edit', 'Editar']];
+    const tabs = [['view', 'Contenido', 'eye'], ['files', 'Archivos', 'tree'], ['edit', 'Editar', 'edit']];
     $('#detail').innerHTML = `
       <div class="detail-head">
         <div class="detail-title">
           <div>
             <h2>${esc(skill.name)}</h2>
-            <span class="slug">${esc(skill.slug)}/SKILL.md · ${skill.file_count} archivos · ${humanSize(skill.size_bytes)}</span>
+            <span class="slug">
+              <span><b>${esc(skill.slug)}</b>/SKILL.md</span>
+              <span>${skill.file_count} archivos</span>
+              <span>${humanSize(skill.size_bytes)}</span>
+            </span>
           </div>
           <div class="detail-actions">
-            <button class="ghost" data-act="duplicate">Duplicar</button>
-            <button class="ghost" data-act="export">Exportar</button>
-            <button class="danger" data-act="delete">Borrar</button>
+            <button class="ghost" data-act="duplicate">${ic('copy', 'ic-sm')}Duplicar</button>
+            <button class="ghost" data-act="export">${ic('export', 'ic-sm')}Exportar</button>
+            <button class="danger square" data-act="delete" title="Borrar skill" aria-label="Borrar skill">${ic('trash')}</button>
+            <button class="ghost square" data-act="close" title="Cerrar" aria-label="Cerrar">${ic('close')}</button>
           </div>
         </div>
         <p class="detail-desc">${esc(skill.description || 'Sin descripción')}</p>
         <div class="detail-meta">
           ${skill.agents.map((a) => `<span class="tag agent">${esc(a)}</span>`).join('')}
-          ${skill.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join('')}
+          ${skill.tags.map((t) => `<span class="tag">${ic('hash')}${esc(t)}</span>`).join('')}
           ${skill.version ? `<span class="tag">v${esc(skill.version)}</span>` : ''}
           ${skill.author ? `<span class="tag">${esc(skill.author)}</span>` : ''}
           ${skill.license ? `<span class="tag">${esc(skill.license)}</span>` : ''}
           ${skill.updated ? `<span class="tag">${esc(skill.updated.replace('T', ' '))}</span>` : ''}
         </div>
-        <div class="tabs">${tabs.map(([key, label]) =>
-          `<button class="tab${state.tab === key ? ' on' : ''}" data-tab="${key}">${label}</button>`).join('')}</div>
+        <div class="tabs">${tabs.map(([key, label, icon]) =>
+          `<button class="tab${state.tab === key ? ' on' : ''}" data-tab="${key}">${ic(icon, 'ic-sm')}${label}</button>`).join('')}</div>
       </div>
       <div class="tab-body" id="tab-body"></div>`;
 
@@ -266,6 +281,8 @@
         await refresh(copy.slug);
       } else if (action === 'export') {
         window.location.href = `/api/skills/${skill.slug}/export`;
+      } else if (action === 'close') {
+        closeSkill();
       } else if (action === 'delete') {
         const sure = await confirmDanger(
           `Borrar "${skill.name}"`,
@@ -283,35 +300,39 @@
   function renderView() {
     const skill = state.current;
     const extras = Object.entries(skill.extra || {});
+    const strip = []
+      .concat(skill.allowed_tools.length
+        ? [['allowed-tools', skill.allowed_tools.join(', ')]] : [])
+      .concat(extras.map(([key, value]) => [key, String(value)]));
     $('#tab-body').innerHTML = `
       <div class="md">${window.md.render(skill.body || '_Esta skill todavía no tiene contenido._')}</div>
-      ${skill.allowed_tools.length ? `<p class="muted mono">allowed-tools: ${esc(skill.allowed_tools.join(', '))}</p>` : ''}
-      ${extras.length ? `<p class="muted mono">${extras.map(([k, v]) => `${esc(k)}: ${esc(String(v))}`).join(' · ')}</p>` : ''}`;
+      ${strip.length ? `<div class="meta-strip">${strip.map(([key, value]) =>
+        `<div><b>${esc(key)}</b> <span>${esc(value)}</span></div>`).join('')}</div>` : ''}`;
   }
 
   /* --------------------------------------------------------------- files */
   function treeHtml(nodes) {
-    if (!nodes.length) return '<p class="muted" style="padding:8px">Vacío</p>';
+    if (!nodes.length) return '<p class="list-empty">Sin archivos</p>';
     const item = (node) => node.type === 'dir'
       ? `<li>
           <div class="node" data-dir="${esc(node.path)}">
-            <span>📁</span><span class="name">${esc(node.name)}</span>
+            ${ic('folder')}<span class="name">${esc(node.name)}</span>
             <span class="node-actions">
-              <button class="icon" data-new-here="${esc(node.path)}" title="Nuevo archivo aquí">+</button>
-              <button class="icon" data-rename="${esc(node.path)}" title="Renombrar">✎</button>
-              <button class="icon" data-delete="${esc(node.path)}" title="Borrar">🗑</button>
+              <button class="icon" data-new-here="${esc(node.path)}" title="Nuevo archivo aquí" aria-label="Nuevo archivo aquí">${ic('plus', 'ic-sm')}</button>
+              <button class="icon" data-rename="${esc(node.path)}" title="Renombrar" aria-label="Renombrar">${ic('edit', 'ic-sm')}</button>
+              <button class="icon" data-delete="${esc(node.path)}" title="Borrar" aria-label="Borrar">${ic('trash', 'ic-sm')}</button>
             </span>
           </div>
           ${node.children.length ? `<ul>${node.children.map(item).join('')}</ul>` : ''}
         </li>`
       : `<li>
           <div class="node${state.file && state.file.path === node.path ? ' on' : ''}" data-file="${esc(node.path)}">
-            <span>${node.editable ? '📄' : '📦'}</span><span class="name">${esc(node.name)}</span>
+            ${ic(node.editable ? 'file' : 'binary')}<span class="name">${esc(node.name)}</span>
             <span class="size">${humanSize(node.size)}</span>
             <span class="node-actions">
-              <button class="icon" data-download="${esc(node.path)}" title="Descargar">⬇</button>
-              <button class="icon" data-rename="${esc(node.path)}" title="Renombrar o mover">✎</button>
-              <button class="icon" data-delete="${esc(node.path)}" title="Borrar">🗑</button>
+              <button class="icon" data-download="${esc(node.path)}" title="Descargar" aria-label="Descargar">${ic('download', 'ic-sm')}</button>
+              <button class="icon" data-rename="${esc(node.path)}" title="Renombrar o mover" aria-label="Renombrar o mover">${ic('edit', 'ic-sm')}</button>
+              <button class="icon" data-delete="${esc(node.path)}" title="Borrar" aria-label="Borrar">${ic('trash', 'ic-sm')}</button>
             </span>
           </div>
         </li>`;
@@ -322,16 +343,22 @@
     const skill = state.current;
     $('#tab-body').innerHTML = `
       <div class="files">
-        <div class="tree-panel">
-          <div class="tree-toolbar">
-            <button class="ghost" data-tool="file">+ Archivo</button>
-            <button class="ghost" data-tool="folder">+ Carpeta</button>
-            <button class="ghost" data-tool="upload">Subir</button>
+        <div class="panel-box">
+          <div class="panel-head">
+            <span class="title">Árbol</span>
+            <div class="tree-toolbar">
+              <button class="ghost" data-tool="file" title="Nuevo archivo">${ic('file', 'ic-sm')}Archivo</button>
+              <button class="ghost" data-tool="folder" title="Nueva carpeta">${ic('folder', 'ic-sm')}Carpeta</button>
+              <button class="ghost square" data-tool="upload" title="Subir archivos" aria-label="Subir archivos">${ic('upload', 'ic-sm')}</button>
+            </div>
           </div>
           <div class="tree">${treeHtml(skill.tree)}</div>
         </div>
-        <div class="editor-panel" id="editor-panel">
-          <div class="binary-note">Elige un archivo del árbol para verlo o editarlo.</div>
+        <div class="panel-box" id="editor-panel">
+          <div class="binary-note">
+            ${ic('corner')}
+            Elige un archivo del árbol para verlo o editarlo
+          </div>
         </div>
       </div>
       <input type="file" id="upload-input" multiple hidden>`;
@@ -416,18 +443,24 @@
     const isImage = /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(file.path);
     const url = `/api/skills/${state.current.slug}/raw?path=${encodeURIComponent(file.path)}`;
 
+    const segments = file.path.split('/');
+    const pathHtml = segments
+      .map((part, index) => index === segments.length - 1 ? `<b>${esc(part)}</b>` : esc(part))
+      .join('<span class="sep">/</span>');
+
     panel.innerHTML = `
       <div class="editor-head">
-        <span class="path">${esc(file.path)}</span>
-        <span class="dirty hidden" id="dirty-flag">● sin guardar</span>
-        ${file.editable ? '<button class="primary" id="save-file">Guardar</button>' : ''}
-        <button class="ghost" id="download-file">Descargar</button>
+        ${ic(file.editable ? 'file' : 'binary', 'ic-sm')}
+        <span class="path">${pathHtml}</span>
+        <span class="dirty hidden" id="dirty-flag">${ic('dot')}sin guardar</span>
+        ${file.editable ? `<button class="primary" id="save-file">${ic('save', 'ic-sm')}Guardar</button>` : ''}
+        <button class="ghost square" id="download-file" title="Descargar" aria-label="Descargar">${ic('download', 'ic-sm')}</button>
       </div>
       ${file.editable
         ? `<textarea class="code" id="file-editor" spellcheck="false">${esc(file.content)}</textarea>`
         : `<div class="binary-note">
-             ${isImage ? `<img src="${url}" alt="${esc(file.path)}">` : ''}
-             <p>Archivo binario (${humanSize(file.size)}). No se puede editar aquí.</p>
+             ${isImage ? `<img src="${url}" alt="${esc(file.path)}">` : ic('binary')}
+             <p>Archivo binario · ${humanSize(file.size)} · no editable aquí</p>
            </div>`}`;
 
     $('#download-file').onclick = () => { window.location.href = url; };
@@ -566,7 +599,7 @@
           <span class="hint">Ctrl/Cmd + S para guardar.</span>
         </div>
         <div class="form-actions">
-          <button class="primary" type="submit">Guardar cambios</button>
+          <button class="primary" type="submit">${ic('save', 'ic-sm')}Guardar cambios</button>
           <button class="ghost" type="button" id="f-cancel">Descartar</button>
         </div>
       </form>`;
@@ -622,7 +655,7 @@
           <div class="field"><label for="n-folders">Carpetas iniciales</label><input id="n-folders" value="scripts, references"></div>
         </div>
         <div class="form-actions">
-          <button class="primary" type="submit">Crear</button>
+          <button class="primary" type="submit">${ic('plus', 'ic-sm')}Crear skill</button>
           <button class="ghost" type="button" id="n-cancel">Cancelar</button>
         </div>
       </form>`, (root, close) => {
@@ -675,7 +708,7 @@
           <span class="hint">Copia la carpeta (o cada subcarpeta con SKILL.md) a la biblioteca.</span>
         </div>
         <div class="form-actions">
-          <button class="primary" id="i-go">Importar</button>
+          <button class="primary" id="i-go">${ic('import', 'ic-sm')}Importar</button>
           <button class="ghost" id="i-cancel">Cancelar</button>
         </div>
       </div>`, (root, close) => {
@@ -707,8 +740,17 @@
       $('#detail').classList.remove('hidden');
       $('#detail').innerHTML = `
         <div class="detail-head">
-          <div class="detail-title"><div><h2>Resultados para “${esc(query)}”</h2>
-          <span class="slug">${data.results.length} skills con coincidencias en su contenido</span></div></div>
+          <div class="detail-title">
+            <div>
+              <h2>“${esc(query)}”</h2>
+              <span class="slug">
+                <span><b>${data.results.length}</b> skills con coincidencias en su contenido</span>
+              </span>
+            </div>
+            <div class="detail-actions">
+              <button class="ghost square" data-close-search title="Cerrar" aria-label="Cerrar">${ic('close')}</button>
+            </div>
+          </div>
           <div class="tabs"></div>
         </div>
         <div class="tab-body">${data.results.length ? data.results.map((hit) => `
@@ -717,10 +759,11 @@
             ${hit.matches.map((match) => `<div class="line">
               <span class="where">${esc(match.path)}:${match.line}</span> ${highlight(match.text, query)}
             </div>`).join('')}
-          </div>`).join('') : '<p class="muted">Sin coincidencias.</p>'}</div>`;
+          </div>`).join('') : '<p class="list-empty">Sin coincidencias</p>'}</div>`;
       $$('#detail [data-open]').forEach((node) => {
         node.onclick = (event) => { event.preventDefault(); openSkill(node.dataset.open); };
       });
+      $('#detail [data-close-search]').onclick = closeSkill;
     } catch (error) { fail(error); }
   }
 

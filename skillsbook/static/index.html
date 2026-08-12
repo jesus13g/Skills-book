@@ -3,45 +3,143 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Skills Book — biblioteca local de skills</title>
 <link rel="stylesheet" href="/styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0a0c'/><rect x='6' y='6' width='20' height='4' fill='%23ff5a1f'/><rect x='6' y='14' width='20' height='4' fill='%23f4f4f2'/><rect x='6' y='22' width='12' height='4' fill='%23f4f4f2'/></svg>">
 </head>
 <body>
+
+<!-- Simbología: todos los iconos de la interfaz son SVG de este sprite. -->
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-logo" viewBox="0 0 24 24">
+    <path d="M3 4h18v3H3z"/><path d="M3 10.5h18v3H3z"/><path d="M3 17h11v3H3z"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <path d="M3 3h13v13H3z"/><path d="M16 16l5 5"/>
+  </symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24">
+    <path d="M3 8V3h5"/><path d="M21 8V3h-5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M7 12h10"/>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24">
+    <path d="M12 4v16"/><path d="M4 12h16"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 24 24">
+    <path d="M5 5l14 14"/><path d="M19 5L5 19"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24">
+    <path d="M4 12l5 5L20 6"/>
+  </symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24">
+    <path d="M12 3L22 20H2z"/><path d="M12 9v5"/><path d="M12 17h.01"/>
+  </symbol>
+  <symbol id="i-import" viewBox="0 0 24 24">
+    <path d="M12 3v10"/><path d="M7 9l5 5 5-5"/><path d="M3 16v5h18v-5"/>
+  </symbol>
+  <symbol id="i-export" viewBox="0 0 24 24">
+    <path d="M12 16V6"/><path d="M7 10l5-5 5 5"/><path d="M3 16v5h18v-5"/>
+  </symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24">
+    <path d="M3 5h7l2 3h9v11H3z"/>
+  </symbol>
+  <symbol id="i-file" viewBox="0 0 24 24">
+    <path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5"/>
+  </symbol>
+  <symbol id="i-binary" viewBox="0 0 24 24">
+    <path d="M12 3l9 5v8l-9 5-9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/>
+  </symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24">
+    <path d="M12 17V5"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/>
+  </symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24">
+    <path d="M4 20v-4L16 4l4 4L8 20z"/><path d="M13 7l4 4"/>
+  </symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24">
+    <path d="M4 6h16"/><path d="M9 6V3h6v3"/><path d="M6 6l1 15h10l1-15"/><path d="M10 10v8"/><path d="M14 10v8"/>
+  </symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24">
+    <path d="M8 3h13v13"/><path d="M3 8h13v13H3z"/>
+  </symbol>
+  <symbol id="i-save" viewBox="0 0 24 24">
+    <path d="M3 3h14l4 4v14H3z"/><path d="M7 3v7h9V3"/><path d="M7 21v-7h10v7"/>
+  </symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24">
+    <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><path d="M9 12h6"/>
+  </symbol>
+  <symbol id="i-tree" viewBox="0 0 24 24">
+    <path d="M3 4h8v5H3z"/><path d="M13 15h8v5h-8z"/><path d="M13 4h8v5h-8z"/><path d="M7 9v11h6"/><path d="M7 6.5h6"/>
+  </symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24">
+    <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><path d="M9 3v6"/><path d="M16 9v6"/><path d="M7 15v6"/>
+  </symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24">
+    <path d="M7 7h10v10H7z"/>
+  </symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24">
+    <path d="M20 12H4"/><path d="M10 6l-6 6 6 6"/>
+  </symbol>
+  <symbol id="i-corner" viewBox="0 0 24 24">
+    <path d="M4 4v16h16"/>
+  </symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24">
+    <path d="M9 3L7 21"/><path d="M17 3l-2 18"/><path d="M3 9h18"/><path d="M3 15h18"/>
+  </symbol>
+</svg>
+
 <div id="app">
   <aside class="sidebar">
     <header class="sidebar-head">
       <div class="brand">
-        <span class="brand-mark">📚</span>
-        <div>
-          <h1>Skills Book</h1>
-          <p id="library-path" class="muted mono"></p>
+        <span class="brand-mark"><svg class="ic ic-fill ic-lg"><use href="#i-logo"/></svg></span>
+        <div class="brand-text">
+          <h1>Skills<span>Book</span></h1>
+          <p id="library-path" class="mono" title="Carpeta de la biblioteca"></p>
         </div>
       </div>
+
       <div class="search-row">
-        <input id="search" type="search" placeholder="Buscar skills…  (/)" autocomplete="off">
-        <button id="btn-deep-search" class="ghost" title="Buscar dentro de los archivos">⌕</button>
+        <span class="search-icon"><svg class="ic ic-sm"><use href="#i-search"/></svg></span>
+        <input id="search" type="search" placeholder="Buscar skills" autocomplete="off" aria-label="Buscar skills">
+        <kbd class="search-kbd">/</kbd>
+        <button id="btn-deep-search" class="ghost square" title="Buscar dentro de los archivos (Intro)" aria-label="Buscar dentro de los archivos">
+          <svg class="ic"><use href="#i-scan"/></svg>
+        </button>
       </div>
+
+      <div class="rail-label"><span>Filtros</span><i></i></div>
       <div id="filters" class="filters"></div>
     </header>
 
+    <div class="rail-label list-label"><span>Biblioteca</span><i></i></div>
     <div id="skill-list" class="skill-list"></div>
 
     <footer class="sidebar-foot">
-      <button id="btn-new" class="primary">+ Nueva skill</button>
-      <button id="btn-import" class="ghost" title="Importar zip o carpeta">Importar</button>
-      <button id="btn-export-all" class="ghost" title="Descargar toda la biblioteca">Exportar</button>
+      <button id="btn-new" class="primary"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Nueva skill</button>
+      <button id="btn-import" class="ghost square" title="Importar zip o carpeta" aria-label="Importar">
+        <svg class="ic"><use href="#i-import"/></svg>
+      </button>
+      <button id="btn-export-all" class="ghost square" title="Descargar toda la biblioteca" aria-label="Exportar">
+        <svg class="ic"><use href="#i-export"/></svg>
+      </button>
     </footer>
   </aside>
 
   <main id="main" class="main">
     <div id="empty" class="empty">
       <div class="empty-inner">
-        <span class="empty-mark">📚</span>
-        <h2>Tu biblioteca de skills</h2>
+        <span class="empty-mark"><svg class="ic ic-fill"><use href="#i-logo"/></svg></span>
+        <h2>Tu biblioteca<br>de skills</h2>
         <p>Guarda, revisa y edita las skills de tus agentes — Claude, ChatGPT, opencode y cualquier otro — con sus scripts y documentos de apoyo.</p>
         <div id="empty-stats" class="stat-row"></div>
-        <button class="primary" data-action="new">Crear la primera skill</button>
+        <button class="primary" data-action="new"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Crear la primera skill</button>
+        <ul class="key-hints">
+          <li><kbd>/</kbd><span>Buscador</span></li>
+          <li><kbd>Intro</kbd><span>Buscar en el contenido</span></li>
+          <li><kbd>Ctrl</kbd><kbd>S</kbd><span>Guardar</span></li>
+        </ul>
       </div>
     </div>
     <div id="detail" class="detail hidden"></div>
