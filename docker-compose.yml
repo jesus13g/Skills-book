@@ -1,0 +1,53 @@
+# Skills Book en el servidor de la organizacion.
+#
+#   docker compose up -d          arrancar (y al reiniciar la maquina)
+#   docker compose logs -f        ver el registro
+#   docker compose pull && docker compose up -d --build   actualizar
+#
+# Los datos viven en ./data/skills del host: una carpeta normal con una
+# subcarpeta por skill. Copiala y ya tienes la copia de seguridad.
+services:
+  skillsbook:
+    build: .
+    image: skillsbook:latest
+    container_name: skillsbook
+    restart: unless-stopped
+
+    # El contenedor escribe como uid 1000. Si tu carpeta ./data es de otro
+    # usuario: sudo chown -R 1000:1000 ./data   (o descomenta la linea user:)
+    # user: "1000:1000"
+
+    ports:
+      # Solo el puerto 8777 de la maquina, accesible desde toda la LAN.
+      # Para publicar unicamente en una IP concreta: "192.168.1.50:8777:8777"
+      - "8777:8777"
+
+    volumes:
+      - ./data/skills:/data/skills
+
+    environment:
+      SKILLSBOOK_HOME: /data/skills
+      SKILLSBOOK_HOST: 0.0.0.0
+      SKILLSBOOK_PORT: "8777"
+      SKILLSBOOK_STRICT_PORT: "1"
+      SKILLSBOOK_NO_BROWSER: "1"
+      # Importar carpetas por ruta leeria el disco del servidor: desactivado.
+      SKILLSBOOK_ALLOW_PATH_IMPORT: "0"
+      # Registro de peticiones en `docker compose logs`.
+      SKILLSBOOK_VERBOSE: "0"
+      # Token de acceso: quitalo solo si la red ya esta controlada.
+      # Se pide en el navegador (usuario cualquiera, contrasena = el token).
+      SKILLSBOOK_TOKEN: "${SKILLSBOOK_TOKEN:-}"
+
+    # La app no necesita escribir fuera de /data.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

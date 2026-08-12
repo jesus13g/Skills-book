@@ -1,0 +1,20 @@
+# Fuera del contexto de build: todo lo que no sea la app o las skills semilla.
+.git
+.github
+.gitignore
+data
+tests
+deploy
+docker-compose.yml
+Dockerfile
+.dockerignore
+__pycache__
+**/__pycache__
+*.py[cod]
+.venv
+*.zip
+.DS_Store
+skillsbook.bat
+skillsbook.sh
+skillsbook-servidor.bat
+skillsbook-servidor.sh

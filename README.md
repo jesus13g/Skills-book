@@ -41,6 +41,26 @@ Eso te deja editar directamente las skills que ya usa tu agente.
 
 ---
 
+## En un servidor de la organización
+
+La misma app, compartida por todo el equipo en la red local:
+
+```bash
+docker compose up -d                # Docker
+skillsbook-servidor.bat             # Windows
+./skillsbook-servidor.sh            # Linux / macOS
+```
+
+Queda en `http://IP-DEL-SERVIDOR:8777/`. Al salir a la red, la app se pone sola en modo
+servidor: no abre navegador, no salta de puerto y desactiva la importación por ruta.
+Pon un `SKILLSBOOK_TOKEN` para que pida contraseña, o cualquiera en la red podrá borrar
+skills.
+
+**[DESPLIEGUE.md](DESPLIEGUE.md)** lo cuenta entero: instalación, arranque automático,
+configuración, permisos, copias de seguridad y qué mirar cuando algo falla.
+
+---
+
 ## Cómo se guarda una skill
 
 ```
@@ -155,6 +175,7 @@ La interfaz es solo un cliente de esta API; puedes usarla desde `curl` o tus pro
 | `POST /api/import` | Importar `zip_base64` o `path` |
 | `GET /api/search?q=…` | Buscar texto dentro de los archivos |
 | `GET /api/stats` | Totales, agentes y etiquetas |
+| `GET /healthz` | Sonda de vida (no pide token) |
 
 ```bash
 curl -s localhost:8777/api/skills | python3 -m json.tool
@@ -170,7 +191,9 @@ curl -s -X POST localhost:8777/api/skills \
 
 Es una app local, pero trata los datos con cuidado:
 
-- Solo escucha en `127.0.0.1` salvo que cambies `--host`.
+- Solo escucha en `127.0.0.1` salvo que cambies `--host`. Si la publicas en la red, pon
+  un `SKILLSBOOK_TOKEN`: sin él, cualquiera que llegue al puerto puede editar y borrar
+  ([DESPLIEGUE.md](DESPLIEGUE.md#quién-puede-entrar)).
 - Todas las rutas se resuelven dentro de la carpeta de la skill: `..`, rutas absolutas y
   enlaces simbólicos que apunten fuera se rechazan.
 - Los zips que importas no pueden escribir fuera de la biblioteca (*zip slip*).
@@ -184,8 +207,8 @@ Es una app local, pero trata los datos con cuidado:
 python3 -m unittest discover -s tests -v
 ```
 
-33 pruebas sobre el frontmatter, el almacén en disco (incluidos los intentos de fuga de ruta)
-y la API HTTP completa. La interfaz se validó además con Playwright sobre Chromium:
+49 pruebas sobre el frontmatter, el almacén en disco (incluidos los intentos de fuga de ruta),
+la API HTTP completa y el modo servidor (token, sonda de vida, candados del despliegue). La interfaz se validó además con Playwright sobre Chromium:
 listado, renderizado de markdown, árbol de archivos, edición con guardado, alta y baja de
 skills, filtros y búsqueda.
 
@@ -195,8 +218,8 @@ skills, filtros y búsqueda.
 
 ```
 skillsbook/
-├── __main__.py       # CLI: puertos, navegador, arranque
-├── server.py         # servidor HTTP y rutas de la API
+├── __main__.py       # CLI: puertos, navegador, modo local o servidor
+├── server.py         # servidor HTTP, rutas de la API y token de acceso
 ├── store.py          # skills en disco: CRUD, archivos, zip, búsqueda
 ├── frontmatter.py    # lectura/escritura del YAML de cabecera
 └── static/
@@ -206,4 +229,12 @@ skillsbook/
     └── markdown.js   # renderizador de markdown
 skills/               # tu biblioteca (incluye 3 skills de ejemplo)
 tests/
+deploy/               # arranque automático y copias de seguridad
+├── linux/            #   unidad de systemd
+└── windows/          #   tarea programada y backup
+docker/               # entrypoint de la imagen
+Dockerfile            # despliegue en servidor con Docker
+docker-compose.yml
+skillsbook-servidor.*  # arranque en modo servidor (.bat y .sh)
+DESPLIEGUE.md          # guía completa de despliegue en la LAN
 ```

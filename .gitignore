@@ -3,3 +3,9 @@ __pycache__/
 .DS_Store
 .venv/
 *.zip
+
+# Despliegue: datos, copias y configuracion de la maquina (con el token dentro)
+data/
+backups/
+servidor.env
+.env
