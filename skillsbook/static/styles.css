@@ -256,6 +256,33 @@ kbd {
 /* ----------------------------------------------------------- lista skills */
 .skill-list { flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0; }
 
+/* Las dos bibliotecas comparten la barra: las skills se quedan con el sitio
+   que sobra y los prompts nunca pasan de poco menos de la mitad. */
+.prompt-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 45%;
+  border-top: var(--rule) solid var(--line);
+}
+.prompt-list { flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0; }
+.rail-label button.icon { margin-left: -4px; padding: 3px; }
+
+.prompt-card { padding-right: 34px; }
+.prompt-card p {
+  font-family: var(--mono);
+  font-size: 11px;
+  -webkit-line-clamp: 3;
+  white-space: pre-line;   /* el prompt se lee como está escrito, con sus saltos */
+}
+.prompt-card .card-copy {
+  position: absolute; top: 8px; right: 7px;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity var(--step);
+}
+.prompt-card:hover .card-copy, .prompt-card.on .card-copy, .card-copy:focus-visible { opacity: 1; }
+
 .skill-card {
   position: relative;
   display: block;
@@ -436,10 +463,11 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 .empty-inner > p { color: var(--fg-2); margin: 0 0 26px; max-width: 42ch; }
 
 .stat-row {
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   border: var(--hair) solid var(--line);
   margin-bottom: 26px;
 }
+.empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .stat-row div {
   padding: 12px 14px;
   border-right: var(--hair) solid var(--line);
@@ -490,7 +518,8 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 /* Todo lo que vive en la columna de lectura se centra sobre el mismo eje. */
 .detail-title, .detail-desc, .detail-meta, .tabs,
 .tab-body > .md, .tab-body > .meta-strip, .tab-body > .hit,
-.tab-body > .list-empty, .tab-body > .form {
+.tab-body > .list-empty, .tab-body > .form,
+.tab-body > .md-bar, .tab-body > .code-view {
   max-width: var(--measure);
   margin-inline: auto;
 }
@@ -558,6 +587,48 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
   z-index: 1;
 }
 .tab-body { padding: 30px 32px; }
+
+/* -------------------------------------- markdown: código o texto enriquecido */
+/* El switch no reemplaza nada: enseña un panel y esconde el otro, así el
+   textarea que hay debajo conserva lo que estabas escribiendo. */
+.md-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: var(--hair) solid var(--line);
+}
+.md-bar .md-bar-file {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--fg-3);
+}
+.md-bar button:last-child { margin-left: auto; }
+
+.md-switch { display: flex; gap: 0; }
+.md-switch .chip { margin-right: -1px; }
+.md-switch .chip.on { z-index: 1; }
+.editor-head .md-switch { margin-left: auto; }
+.field-head { display: flex; align-items: center; gap: 12px; }
+.field-head label { flex: 1; }
+
+.code-view, .md-preview {
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--sunken);
+  border: var(--hair) solid var(--line);
+}
+.code-view {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #d8d8dc;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+.md-preview { min-height: 120px; overflow-x: auto; }
+#editor-panel > .md-preview { border: none; background: var(--panel); min-height: 55vh; }
 
 /* ---------------------------------------------------------------- markdown */
 .md { font-size: 14.5px; line-height: 1.72; color: #e2e2e0; }
@@ -930,6 +1001,10 @@ textarea.code:focus { outline: none; background: var(--sunken); }
   #app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
   .sidebar { max-height: 52vh; border-right: none; border-bottom: var(--rule) solid var(--line-2); }
   .filters { max-height: 62px; }
+  /* Con la barra a media pantalla, los prompts se quedan con una franja fija
+     y el botón de copiar deja de esconderse: aquí no hay hover que valga. */
+  .prompt-section { max-height: 38%; }
+  .prompt-card .card-copy { opacity: 1; }
   .files { grid-template-columns: 1fr; }
   .tab-body, .detail-head { padding-left: 20px; padding-right: 20px; }
   .detail-title { flex-wrap: wrap; }

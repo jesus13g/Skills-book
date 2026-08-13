@@ -1,12 +1,13 @@
 # 📚 Skills Book
 
-Biblioteca **local** de skills para agentes — Claude, ChatGPT, opencode, Cursor, Copilot, Gemini
-o cualquier otro. Guarda, revisa, crea, edita y borra skills desde el navegador, con sus
-carpetas de scripts y documentos de apoyo.
+Biblioteca **local** de skills y prompts para agentes — Claude, ChatGPT, opencode, Cursor,
+Copilot, Gemini o cualquier otro. Guarda, revisa, crea, edita y borra skills desde el
+navegador, con sus carpetas de scripts y documentos de apoyo; y guarda al lado los prompts
+que repites cada día, listos para copiar de un clic.
 
 Sin base de datos, sin cuenta, sin conexión a internet y **sin dependencias**: solo Python 3.9+.
-Cada skill es una carpeta de verdad en tu disco, así que sigue siendo utilizable desde la
-terminal, desde git y desde los propios agentes.
+Cada skill es una carpeta de verdad en tu disco y cada prompt un archivo de verdad, así que
+todo sigue siendo utilizable desde la terminal, desde git y desde los propios agentes.
 
 ---
 
@@ -26,6 +27,7 @@ salta automáticamente al siguiente libre.
 | Opción | Qué hace |
 | --- | --- |
 | `--dir RUTA` | Usa otra carpeta como biblioteca (por defecto `./skills`). |
+| `--prompts-dir RUTA` | Carpeta de prompts (por defecto, la hermana de la biblioteca). |
 | `--port N` | Puerto HTTP (por defecto `8777`). |
 | `--host H` | Interfaz de escucha (por defecto `127.0.0.1`). |
 | `--no-browser` | No abrir el navegador al arrancar. |
@@ -37,7 +39,8 @@ También puedes fijar la biblioteca con la variable `SKILLSBOOK_HOME`:
 SKILLSBOOK_HOME=~/.claude/skills python3 -m skillsbook
 ```
 
-Eso te deja editar directamente las skills que ya usa tu agente.
+Eso te deja editar directamente las skills que ya usa tu agente. Los prompts se guardan en
+la carpeta hermana (`~/.claude/prompts` en ese ejemplo), o donde diga `SKILLSBOOK_PROMPTS`.
 
 ---
 
@@ -97,7 +100,44 @@ Las claves que no conoce la app (por ejemplo `model:` o `x-origen:`) **se conser
 
 ---
 
+## Cómo se guarda un prompt
+
+Un prompt es un bloque de texto que repites mucho pero que no da para una skill: no tiene
+scripts ni documentos, así que es **un archivo suelto** en la carpeta hermana de la
+biblioteca:
+
+```
+data/
+├── skills/
+│   └── revision-de-codigo/…
+└── prompts/
+    ├── resumen-ejecutivo.md
+    └── mensaje-de-commit.md
+```
+
+Mismo formato que una skill, para que se siga leyendo desde la terminal y desde git:
+
+```markdown
+---
+name: Resumen ejecutivo
+tags: [redaccion, cliente]
+updated: 2026-08-13T10:04:11
+---
+
+Resume el siguiente texto en cinco viñetas…
+```
+
+Con `--prompts-dir` o `SKILLSBOOK_PROMPTS` puedes ponerlos en otro sitio.
+
+---
+
 ## Qué puedes hacer
+
+**Con los prompts**
+- Crear, editar, duplicar y borrar, con el identificador (nombre del archivo) renombrable.
+- **Copiar el prompt entero de un clic**, desde su tarjeta en la lista o desde el detalle.
+- Etiquetarlos y filtrarlos con las mismas etiquetas que las skills.
+- Buscarlos por nombre y por contenido.
 
 **Con las skills**
 - Crear, editar y borrar, con el identificador (nombre de carpeta) renombrable.
@@ -106,6 +146,11 @@ Las claves que no conoce la app (por ejemplo `model:` o `x-origen:`) **se conser
 - Filtrar por agente o etiqueta, buscar por nombre y descripción, o buscar texto **dentro** de
   todos los archivos de todas las skills.
 - Ver el `SKILL.md` renderizado como markdown: títulos, listas, tablas, código y citas.
+
+**En todo lo que sea markdown** — el contenido de una skill, un prompt, un `.md` del árbol de
+archivos y los formularios de edición — hay un interruptor **Texto / Código** para alternar
+entre el markdown renderizado y el fuente tal cual. La elección se recuerda, y en el editor
+puedes ver la vista previa sin perder lo que estabas escribiendo.
 
 **Con los archivos de cada skill**
 - Árbol de carpetas con cualquier profundidad.
@@ -116,8 +161,9 @@ Las claves que no conoce la app (por ejemplo `model:` o `x-origen:`) **se conser
 - Los `.sh` se marcan como ejecutables automáticamente.
 
 **Entrar y salir**
-- Exportar una skill o la biblioteca entera como zip.
-- Importar un zip (con una o varias skills) o copiar una carpeta local, p. ej. `~/.claude/skills`.
+- Exportar una skill, o la biblioteca entera —skills y prompts— como zip.
+- Importar un zip (con una o varias skills, con prompts o con las dos cosas) o copiar una
+  carpeta local de skills, p. ej. `~/.claude/skills`.
 
 ### Atajos
 
@@ -157,6 +203,12 @@ La interfaz es solo un cliente de esta API; puedes usarla desde `curl` o tus pro
 
 | Método y ruta | Qué hace |
 | --- | --- |
+| `GET /api/prompts` | Lista de prompts (con su texto) |
+| `POST /api/prompts` | Crear prompt |
+| `GET /api/prompts/{slug}` | Prompt completo |
+| `PUT /api/prompts/{slug}` | Actualizar (incluye renombrar el archivo) |
+| `DELETE /api/prompts/{slug}` | Borrar el prompt |
+| `POST /api/prompts/{slug}/duplicate` | Duplicar |
 | `GET /api/skills` | Lista de skills con sus metadatos |
 | `POST /api/skills` | Crear skill |
 | `GET /api/skills/{slug}` | Skill completa: metadatos, cuerpo y árbol de archivos |
@@ -171,9 +223,9 @@ La interfaz es solo un cliente de esta API; puedes usarla desde `curl` o tus pro
 | `POST /api/skills/{slug}/move` | Renombrar o mover (`path` → `to`) |
 | `GET /api/skills/{slug}/raw?path=…` | Descargar el archivo tal cual |
 | `GET /api/skills/{slug}/export` | Zip de la skill |
-| `GET /api/export` | Zip de toda la biblioteca |
+| `GET /api/export` | Zip de toda la biblioteca (skills y prompts) |
 | `POST /api/import` | Importar `zip_base64` o `path` |
-| `GET /api/search?q=…` | Buscar texto dentro de los archivos |
+| `GET /api/search?q=…` | Buscar texto dentro de los archivos y de los prompts |
 | `GET /api/stats` | Totales, agentes y etiquetas |
 | `GET /healthz` | Sonda de vida (no pide token) |
 
@@ -183,6 +235,10 @@ curl -s localhost:8777/api/skills | python3 -m json.tool
 curl -s -X POST localhost:8777/api/skills \
   -H 'Content-Type: application/json' \
   -d '{"name":"Mi skill","description":"Qué hace y cuándo usarla","agents":["claude"]}'
+
+curl -s -X POST localhost:8777/api/prompts \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Resumen ejecutivo","text":"Resume el texto en cinco viñetas.","tags":["redaccion"]}'
 ```
 
 ---
@@ -207,10 +263,12 @@ Es una app local, pero trata los datos con cuidado:
 python3 -m unittest discover -s tests -v
 ```
 
-49 pruebas sobre el frontmatter, el almacén en disco (incluidos los intentos de fuga de ruta),
-la API HTTP completa y el modo servidor (token, sonda de vida, candados del despliegue). La interfaz se validó además con Playwright sobre Chromium:
-listado, renderizado de markdown, árbol de archivos, edición con guardado, alta y baja de
-skills, filtros y búsqueda.
+73 pruebas sobre el frontmatter, el almacén en disco de skills y de prompts (incluidos los
+intentos de fuga de ruta), la API HTTP completa y el modo servidor (token, sonda de vida,
+candados del despliegue). La interfaz se validó además con Playwright sobre Chromium: listado,
+renderizado de markdown, interruptor texto/código, copiar al portapapeles (también sobre
+`http://` en la LAN, donde el navegador no da `navigator.clipboard`), árbol de archivos,
+edición con guardado, alta y baja de skills y de prompts, filtros y búsqueda.
 
 ---
 
@@ -221,6 +279,7 @@ skillsbook/
 ├── __main__.py       # CLI: puertos, navegador, modo local o servidor
 ├── server.py         # servidor HTTP, rutas de la API y token de acceso
 ├── store.py          # skills en disco: CRUD, archivos, zip, búsqueda
+├── prompts.py        # prompts en disco: un .md por prompt
 ├── frontmatter.py    # lectura/escritura del YAML de cabecera
 └── static/
     ├── index.html
@@ -228,6 +287,7 @@ skillsbook/
     ├── app.js        # interfaz
     └── markdown.js   # renderizador de markdown
 skills/               # tu biblioteca (incluye 3 skills de ejemplo)
+prompts/              # tus prompts, uno por archivo (se crea al arrancar)
 tests/
 deploy/               # arranque automático y copias de seguridad
 ├── linux/            #   unidad de systemd

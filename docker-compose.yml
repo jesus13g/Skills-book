@@ -4,8 +4,9 @@
 #   docker compose logs -f        ver el registro
 #   docker compose pull && docker compose up -d --build   actualizar
 #
-# Los datos viven en ./data/skills del host: una carpeta normal con una
-# subcarpeta por skill. Copiala y ya tienes la copia de seguridad.
+# Los datos viven en ./data del host: ./data/skills, con una subcarpeta por
+# skill, y ./data/prompts, con un .md por prompt. Copiala y ya tienes la copia
+# de seguridad.
 services:
   skillsbook:
     build: .
@@ -24,9 +25,12 @@ services:
 
     volumes:
       - ./data/skills:/data/skills
+      # Sin este montaje los prompts acabarian en un volumen anonimo.
+      - ./data/prompts:/data/prompts
 
     environment:
       SKILLSBOOK_HOME: /data/skills
+      SKILLSBOOK_PROMPTS: /data/prompts
       SKILLSBOOK_HOST: 0.0.0.0
       SKILLSBOOK_PORT: "8777"
       SKILLSBOOK_STRICT_PORT: "1"
