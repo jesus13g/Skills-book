@@ -91,6 +91,48 @@
     }
   }
 
+  /* ------------------------------------------------------------------ tema */
+  /* Tres estados en un solo botón: sistema → claro → oscuro → sistema. Lo que
+     se guarda es la preferencia, no el color resuelto, así que quien deja
+     "sistema" sigue al ajuste del escritorio aunque cambie con la app abierta.
+     El <html> lo marca ya el script en línea de index.html; aquí solo se
+     mantiene al día. */
+  const THEME_KEY = 'sb-theme';
+  const THEMES = ['system', 'light', 'dark'];
+  const THEME_INFO = {
+    system: { icon: 'theme-auto', label: 'Sistema' },
+    light:  { icon: 'sun',        label: 'Claro' },
+    dark:   { icon: 'moon',       label: 'Oscuro' },
+  };
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function themePref() {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      return THEMES.includes(saved) ? saved : 'system';
+    } catch (_) {
+      return 'system';
+    }
+  }
+
+  function applyTheme(pref) {
+    const resolved = pref === 'system' ? (prefersDark.matches ? 'dark' : 'light') : pref;
+    document.documentElement.setAttribute('data-theme', resolved);
+    const button = $('#btn-theme');
+    if (!button) return;
+    const info = THEME_INFO[pref];
+    $('use', button).setAttribute('href', `#i-${info.icon}`);
+    button.title = `Tema: ${info.label} (T)`;
+    button.setAttribute('aria-label', `Tema: ${info.label}. Cambiar tema`);
+  }
+
+  function cycleTheme() {
+    const next = THEMES[(THEMES.indexOf(themePref()) + 1) % THEMES.length];
+    try { localStorage.setItem(THEME_KEY, next); } catch (_) { /* modo privado */ }
+    applyTheme(next);
+    toast(`Tema: ${THEME_INFO[next].label}`);
+  }
+
   /* ------------------------------------------------- markdown: texto/código */
   /* Un switch por contexto, recordado entre sesiones. Los dos paneles se
      pintan siempre y se alternan con .hidden: así el textarea sigue en el DOM
@@ -1171,14 +1213,24 @@
     $('#btn-new-prompt').onclick = newPromptModal;
     $('#btn-import').onclick = importModal;
     $('#btn-export-all').onclick = () => { window.location.href = '/api/export'; };
+    $('#btn-theme').onclick = cycleTheme;
     $('[data-action="new"]').onclick = newSkillModal;
     $('[data-action="new-prompt"]').onclick = newPromptModal;
+
+    applyTheme(themePref());
+    prefersDark.addEventListener('change', () => {
+      if (themePref() === 'system') applyTheme('system');
+    });
 
     document.addEventListener('keydown', (event) => {
       const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
       if (event.key === '/' && !typing) {
         event.preventDefault();
         $('#search').focus();
+      }
+      if (event.key.toLowerCase() === 't' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        cycleTheme();
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
