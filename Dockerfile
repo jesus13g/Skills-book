@@ -1,8 +1,9 @@
 # Skills Book — imagen para el servidor de la organizacion.
 #
 # Sin dependencias: la app es solo stdlib de Python, asi que la imagen es
-# python:slim + el codigo. Los datos (las skills) viven en /data/skills, que
-# es un volumen: la imagen se puede recrear entera sin perder nada.
+# python:slim + el codigo. Los datos (las skills en /data/skills y los prompts
+# en /data/prompts) viven en un volumen: la imagen se puede recrear entera sin
+# perder nada.
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="Skills Book" \
@@ -12,6 +13,7 @@ LABEL org.opencontainers.image.title="Skills Book" \
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SKILLSBOOK_HOME=/data/skills \
+    SKILLSBOOK_PROMPTS=/data/prompts \
     SKILLSBOOK_HOST=0.0.0.0 \
     SKILLSBOOK_PORT=8777 \
     SKILLSBOOK_NO_BROWSER=1 \
@@ -28,7 +30,7 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && useradd --uid 1000 --user-group --home-dir /data --no-log-init skillsbook \
-    && mkdir -p /data/skills \
+    && mkdir -p /data/skills /data/prompts \
     && chown -R skillsbook:skillsbook /data /opt/skillsbook
 
 USER skillsbook

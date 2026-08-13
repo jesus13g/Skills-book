@@ -35,13 +35,16 @@ Eso tiene tres consecuencias para el despliegue:
 3. **La carpeta se elige con `SKILLSBOOK_HOME`** (o `--dir`). En Docker es un volumen; en
    Windows, por defecto, `data\skills` junto al `.bat`.
 
-Dónde acaba siendo, en cada modo:
+Son **dos** carpetas: la de skills y, a su lado, la de prompts (un `.md` por prompt). La de
+prompts sale sola de la primera, salvo que fijes `SKILLSBOOK_PROMPTS` o `--prompts-dir`.
 
-| Despliegue | Carpeta de datos |
-| --- | --- |
-| Docker (compose de este repo) | `./data/skills` del host → `/data/skills` en el contenedor |
-| Windows `.bat` | `data\skills` junto al `.bat`, o lo que pongas en `servidor.env` |
-| systemd (Linux sin Docker) | `/var/lib/skillsbook/skills` |
+Dónde acaban siendo, en cada modo:
+
+| Despliegue | Skills | Prompts |
+| --- | --- | --- |
+| Docker (compose de este repo) | `./data/skills` → `/data/skills` | `./data/prompts` → `/data/prompts` |
+| Windows `.bat` | `data\skills` junto al `.bat` | `data\prompts` |
+| systemd (Linux sin Docker) | `/var/lib/skillsbook/skills` | `/var/lib/skillsbook/prompts` |
 
 > **Escrituras a la vez.** No hay bloqueo ni historial: si dos personas guardan el mismo
 > archivo en el mismo momento, gana el último. Con un equipo pequeño no da problemas; si
@@ -88,7 +91,9 @@ Todo se toca en `docker-compose.yml`:
 
 - **Otro puerto:** `ports: - "80:8777"` (el 80 hace que la URL sea solo `http://IP/`).
 - **Publicar en una sola tarjeta de red:** `ports: - "192.168.1.50:8777:8777"`.
-- **Otra carpeta de datos:** `volumes: - /srv/skills:/data/skills`.
+- **Otra carpeta de datos:** `volumes: - /srv/skills:/data/skills` (y su pareja
+  `- /srv/prompts:/data/prompts`: si dejas el montaje de prompts fuera, se irían a un
+  volumen anónimo).
 - **Permisos:** si prefieres no hacer `chown`, descomenta `user: "1000:1000"` y pon ahí
   el uid:gid dueño de la carpeta (`id -u`, `id -g`).
 
@@ -159,7 +164,8 @@ en el entorno). Hay un archivo comentado listo para copiar: `servidor.env.ejempl
 
 | Variable | Por defecto | Qué hace |
 | --- | --- | --- |
-| `SKILLSBOOK_HOME` | `./skills` | Carpeta de la biblioteca. **Es todo el estado de la app.** |
+| `SKILLSBOOK_HOME` | `./skills` | Carpeta de la biblioteca. **Es casi todo el estado de la app.** |
+| `SKILLSBOOK_PROMPTS` | hermana de la anterior | Carpeta de los prompts, un `.md` por prompt. |
 | `SKILLSBOOK_HOST` | `127.0.0.1` | `0.0.0.0` publica en toda la LAN. |
 | `SKILLSBOOK_PORT` | `8777` | Puerto HTTP. |
 | `SKILLSBOOK_TOKEN` | *(vacío)* | Contraseña de acceso. Vacío = abierto a toda la red. |
@@ -169,8 +175,9 @@ en el entorno). Hay un archivo comentado listo para copiar: `servidor.env.ejempl
 | `SKILLSBOOK_NO_BROWSER` | — | `1` para no abrir el navegador. |
 | `SKILLSBOOK_VERBOSE` | `0` | `1` registra cada petición. |
 
-Todas tienen su equivalente en la línea de órdenes (`--dir`, `--host`, `--port`,
-`--token`, `--strict-port`, `--no-path-import`, `--verbose`), que manda sobre el entorno.
+Todas tienen su equivalente en la línea de órdenes (`--dir`, `--prompts-dir`, `--host`,
+`--port`, `--token`, `--strict-port`, `--no-path-import`, `--verbose`), que manda sobre el
+entorno.
 
 ### Lo que cambia solo al salir a la red
 
@@ -228,7 +235,9 @@ Cosas que conviene tener claras:
 deploy\windows\copia-seguridad.bat
 ```
 
-Los dos guardan las últimas 14 copias y borran las anteriores. Para dejarlo automático:
+Los dos se llevan también los prompts: en Linux van dentro del mismo `.tar.gz`, junto a la
+carpeta de skills; en Windows, en un `skillsbook-prompts-*.zip` aparte. Los dos guardan las
+últimas 14 copias de cada serie y borran las anteriores. Para dejarlo automático:
 
 ```bash
 # Linux: a las 22:00 todos los días
@@ -240,11 +249,11 @@ Los dos guardan las últimas 14 copias y borran las anteriores. Para dejarlo aut
 schtasks /create /tn "Skills Book backup" /tr "C:\SkillsBook\deploy\windows\copia-seguridad.bat" /sc daily /st 22:00 /ru SYSTEM
 ```
 
-**Restaurar** es descomprimir encima de la carpeta de la biblioteca. No hace falta parar
-el servidor, aunque es más limpio hacerlo.
+**Restaurar** es descomprimir encima de la carpeta de datos (en Linux, la que contiene
+`skills/` y `prompts/`). No hace falta parar el servidor, aunque es más limpio hacerlo.
 
-Desde la interfaz también tienes *Exportar todo* (un zip con la biblioteca entera), útil
-como copia puntual antes de tocar algo.
+Desde la interfaz también tienes *Exportar todo* (un zip con las skills y los prompts), útil
+como copia puntual antes de tocar algo; *Importar* devuelve las dos cosas a su sitio.
 
 ---
 

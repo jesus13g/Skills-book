@@ -87,6 +87,15 @@
   <symbol id="i-hash" viewBox="0 0 24 24">
     <path d="M9 3L7 21"/><path d="M17 3l-2 18"/><path d="M3 9h18"/><path d="M3 15h18"/>
   </symbol>
+  <symbol id="i-clipboard" viewBox="0 0 24 24">
+    <path d="M9 4H5v17h14V4h-4"/><path d="M9 2h6v4H9z"/>
+  </symbol>
+  <symbol id="i-code" viewBox="0 0 24 24">
+    <path d="M9 6l-6 6 6 6"/><path d="M15 6l6 6-6 6"/>
+  </symbol>
+  <symbol id="i-prompt" viewBox="0 0 24 24">
+    <path d="M3 4h18v13H12l-5 4v-4H3z"/><path d="M7 9h10"/><path d="M7 13h6"/>
+  </symbol>
 </svg>
 
 <div id="app">
@@ -102,7 +111,7 @@
 
       <div class="search-row">
         <span class="search-icon"><svg class="ic ic-sm"><use href="#i-search"/></svg></span>
-        <input id="search" type="search" placeholder="Buscar skills" autocomplete="off" aria-label="Buscar skills">
+        <input id="search" type="search" placeholder="Buscar skills y prompts" autocomplete="off" aria-label="Buscar skills y prompts">
         <kbd class="search-kbd">/</kbd>
         <button id="btn-deep-search" class="ghost square" title="Buscar dentro de los archivos (Intro)" aria-label="Buscar dentro de los archivos">
           <svg class="ic"><use href="#i-scan"/></svg>
@@ -113,8 +122,18 @@
       <div id="filters" class="filters"></div>
     </header>
 
-    <div class="rail-label list-label"><span>Biblioteca</span><i></i></div>
+    <div class="rail-label list-label"><span>Skills</span><i></i></div>
     <div id="skill-list" class="skill-list"></div>
+
+    <section id="prompt-section" class="prompt-section">
+      <div class="rail-label list-label">
+        <span>Prompts</span><i></i>
+        <button id="btn-new-prompt" class="icon" title="Nuevo prompt" aria-label="Nuevo prompt">
+          <svg class="ic ic-sm"><use href="#i-plus"/></svg>
+        </button>
+      </div>
+      <div id="prompt-list" class="prompt-list"></div>
+    </section>
 
     <footer class="sidebar-foot">
       <button id="btn-new" class="primary"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Nueva skill</button>
@@ -132,9 +151,12 @@
       <div class="empty-inner">
         <span class="empty-mark"><svg class="ic ic-fill"><use href="#i-logo"/></svg></span>
         <h2>Tu biblioteca<br>de skills</h2>
-        <p>Guarda, revisa y edita las skills de tus agentes — Claude, ChatGPT, opencode y cualquier otro — con sus scripts y documentos de apoyo.</p>
+        <p>Guarda, revisa y edita las skills de tus agentes — Claude, ChatGPT, opencode y cualquier otro — con sus scripts y documentos de apoyo. Y guarda también los prompts que repites cada día.</p>
         <div id="empty-stats" class="stat-row"></div>
-        <button class="primary" data-action="new"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Crear la primera skill</button>
+        <div class="empty-actions">
+          <button class="primary" data-action="new"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Crear una skill</button>
+          <button class="ghost" data-action="new-prompt"><svg class="ic ic-sm"><use href="#i-prompt"/></svg>Crear un prompt</button>
+        </div>
         <ul class="key-hints">
           <li><kbd>/</kbd><span>Buscador</span></li>
           <li><kbd>Intro</kbd><span>Buscar en el contenido</span></li>

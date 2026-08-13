@@ -12,9 +12,12 @@
 
   const state = {
     skills: [],
+    prompts: [],
     stats: null,
     current: null,        // full skill object
+    prompt: null,         // full prompt object (excluyente con current)
     tab: 'view',
+    promptTab: 'view',
     query: '',
     filters: { agents: new Set(), tags: new Set() },
     file: null,           // { path, content, editable, size }
@@ -60,6 +63,78 @@
     const value = bytes / Math.pow(1024, index);
     return `${index === 0 ? value : value.toFixed(1)} ${units[index]}`;
   }
+
+  /* --------------------------------------------------------- portapapeles */
+  /* En la LAN la app se sirve por http://, y ahí `navigator.clipboard` no
+     existe: sin el respaldo del textarea la copia fallaría en silencio para
+     todo el mundo menos para quien la abra en localhost. */
+  async function copyText(text, label = 'Copiado al portapapeles') {
+    const value = String(text == null ? '' : text);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const area = document.createElement('textarea');
+        area.value = value;
+        area.setAttribute('readonly', '');
+        area.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0';
+        document.body.appendChild(area);
+        area.select();
+        area.setSelectionRange(0, value.length);
+        const done = document.execCommand('copy');
+        area.remove();
+        if (!done) throw new Error('el navegador no ha dejado copiar');
+      }
+      toast(label);
+    } catch (error) {
+      toast(`No se pudo copiar: ${error.message || error}`, true);
+    }
+  }
+
+  /* ------------------------------------------------- markdown: texto/código */
+  /* Un switch por contexto, recordado entre sesiones. Los dos paneles se
+     pintan siempre y se alternan con .hidden: así el textarea sigue en el DOM
+     mientras miras la vista previa, con sus cambios sin guardar y su Ctrl+S. */
+  const MD_DEFAULT = { skill: 'rich', prompt: 'code', file: 'code', form: 'code' };
+
+  function mdMode(context) {
+    try {
+      return localStorage.getItem('sb-md-' + context) || MD_DEFAULT[context];
+    } catch (_) {
+      return MD_DEFAULT[context];
+    }
+  }
+
+  function mdSwitch(context) {
+    const mode = mdMode(context);
+    const option = (key, icon, label) =>
+      `<button type="button" class="chip${mode === key ? ' on' : ''}" data-md-mode="${key}">${
+        ic(icon, 'ic-sm')}${label}</button>`;
+    return `<div class="md-switch" data-md-switch="${context}">
+      ${option('rich', 'eye', 'Texto')}${option('code', 'code', 'Código')}
+    </div>`;
+  }
+
+  /* ``root`` contiene el switch y los paneles [data-md-pane="rich|code"].
+     ``onRich`` repinta la vista previa con lo que haya en ese momento. */
+  function bindMdSwitch(root, context, onRich) {
+    const panes = $$('[data-md-pane]', root);
+    const buttons = $$(`[data-md-switch="${context}"] [data-md-mode]`, root);
+    const apply = (mode) => {
+      if (mode === 'rich' && onRich) onRich(panes.find((pane) => pane.dataset.mdPane === 'rich'));
+      panes.forEach((pane) => pane.classList.toggle('hidden', pane.dataset.mdPane !== mode));
+      buttons.forEach((node) => node.classList.toggle('on', node.dataset.mdMode === mode));
+    };
+    buttons.forEach((node) => {
+      node.onclick = () => {
+        try { localStorage.setItem('sb-md-' + context, node.dataset.mdMode); } catch (_) { /* modo privado */ }
+        apply(node.dataset.mdMode);
+      };
+    });
+    apply(mdMode(context));
+  }
+
+  const isMarkdown = (path) => /\.(md|markdown)$/i.test(path || '');
 
   /* --------------------------------------------------------------- modals */
   function modal(title, innerHtml, onMount) {
@@ -118,21 +193,33 @@
   }
 
   /* ------------------------------------------------------------- sidebar */
-  async function refresh(selectSlug) {
-    const [list, stats] = await Promise.all([api('/api/skills'), api('/api/stats')]);
+  async function refresh(selectSlug, selectPrompt) {
+    const [list, promptList, stats] = await Promise.all([
+      api('/api/skills'), api('/api/prompts'), api('/api/stats'),
+    ]);
     state.skills = list.skills;
+    state.prompts = promptList.prompts;
     state.stats = stats;
     $('#library-path').textContent = stats.root;
     renderFilters();
     renderList();
+    renderPromptList();
     renderEmptyStats();
-    if (selectSlug) await openSkill(selectSlug);
-    else if (state.current && !state.skills.some((s) => s.slug === state.current.slug)) closeSkill();
+    if (selectSlug) return openSkill(selectSlug);
+    if (selectPrompt) return openPrompt(selectPrompt);
+    const goneSkill = state.current && !state.skills.some((s) => s.slug === state.current.slug);
+    const gonePrompt = state.prompt && !state.prompts.some((p) => p.slug === state.prompt.slug);
+    if (goneSkill || gonePrompt) closeDetail();
   }
 
   function renderFilters() {
     const agents = Object.keys(state.stats.agents || {}).filter((a) => a !== 'sin-agente');
-    const tags = Object.keys(state.stats.tags || {}).slice(0, 12);
+    // Una etiqueta es una etiqueta, venga de una skill o de un prompt.
+    const pool = { ...(state.stats.tags || {}) };
+    for (const [tag, count] of Object.entries(state.stats.prompt_tags || {})) {
+      pool[tag] = (pool[tag] || 0) + count;
+    }
+    const tags = Object.keys(pool).slice(0, 12);
     const chip = (label, kind, count) =>
       `<button class="chip${state.filters[kind].has(label) ? ' on' : ''}" data-filter="${kind}" data-value="${esc(label)}">${
         esc(label)}${count ? `<span class="count">${count}</span>` : ''}</button>`;
@@ -148,6 +235,7 @@
         else set.add(kind === 'tags' ? '#' + value : value);
         renderFilters();
         renderList();
+        renderPromptList();
       };
     });
   }
@@ -192,27 +280,82 @@
     });
   }
 
+  /* Los filtros de agente son cosa de las skills: mientras haya uno activo la
+     sección de prompts no tiene nada que decir y se aparta. */
+  function visiblePrompts() {
+    if (state.filters.agents.size) return null;
+    const query = state.query.toLowerCase();
+    return state.prompts.filter((prompt) => {
+      if (query) {
+        const haystack = [prompt.name, prompt.slug, prompt.tags.join(' '), prompt.text]
+          .join(' ').toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      for (const tag of state.filters.tags) {
+        if (!prompt.tags.includes(tag.replace(/^#/, ''))) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderPromptList() {
+    const prompts = visiblePrompts();
+    $('#prompt-section').classList.toggle('hidden', prompts === null);
+    if (prompts === null) return;
+    if (!prompts.length) {
+      $('#prompt-list').innerHTML = `<p class="list-empty">${
+        state.prompts.length ? 'Ningún prompt coincide' : 'Sin prompts'}</p>`;
+      return;
+    }
+    $('#prompt-list').innerHTML = prompts.map((prompt) => `
+      <article class="skill-card prompt-card${
+        state.prompt && state.prompt.slug === prompt.slug ? ' on' : ''}" data-prompt="${esc(prompt.slug)}">
+        <h3>${esc(prompt.name)}</h3>
+        <p>${esc(prompt.text.trim().replace(/\n\s*\n/g, '\n').slice(0, 180))}</p>
+        ${prompt.tags.length ? `<div class="meta">${
+          prompt.tags.slice(0, 3).map((t) => `<span class="tag">${ic('hash')}${esc(t)}</span>`).join('')}</div>` : ''}
+        <button class="icon card-copy" data-copy-prompt="${esc(prompt.slug)}"
+                title="Copiar el prompt" aria-label="Copiar el prompt">${ic('copy', 'ic-sm')}</button>
+      </article>`).join('');
+    $$('#prompt-list .prompt-card').forEach((node) => {
+      node.onclick = (event) => {
+        if (event.target.closest('button')) return;
+        openPrompt(node.dataset.prompt);
+      };
+    });
+    $$('#prompt-list [data-copy-prompt]').forEach((node) => {
+      node.onclick = () => {
+        const prompt = state.prompts.find((item) => item.slug === node.dataset.copyPrompt);
+        if (prompt) copyText(prompt.text, `“${prompt.name}” copiado`);
+      };
+    });
+  }
+
   function renderEmptyStats() {
     const stats = state.stats;
     $('#empty-stats').innerHTML = `
       <div><strong>${stats.count}</strong><span>skills</span></div>
+      <div><strong>${stats.prompts || 0}</strong><span>prompts</span></div>
       <div><strong>${stats.files}</strong><span>archivos</span></div>
       <div><strong>${Object.keys(stats.agents).filter((a) => a !== 'sin-agente').length}</strong><span>agentes</span></div>`;
   }
 
   /* -------------------------------------------------------------- detail */
-  function closeSkill() {
+  function closeDetail() {
     state.current = null;
+    state.prompt = null;
     state.file = null;
     location.hash = '';
     $('#detail').classList.add('hidden');
     $('#empty').classList.remove('hidden');
     renderList();
+    renderPromptList();
   }
 
   async function openSkill(slug, tab) {
     try {
       state.current = await api(`/api/skills/${encodeURIComponent(slug)}`);
+      state.prompt = null;
       state.tab = tab || 'view';
       state.file = null;
       state.fileDirty = false;
@@ -222,6 +365,7 @@
       $('#detail').classList.remove('hidden');
       renderDetail();
       renderList();
+      renderPromptList();
     } catch (error) { fail(error); }
   }
 
@@ -240,6 +384,7 @@
             </span>
           </div>
           <div class="detail-actions">
+            <button class="ghost" data-act="copy">${ic('clipboard', 'ic-sm')}Copiar</button>
             <button class="ghost" data-act="duplicate">${ic('copy', 'ic-sm')}Duplicar</button>
             <button class="ghost" data-act="export">${ic('export', 'ic-sm')}Exportar</button>
             <button class="danger square" data-act="delete" title="Borrar skill" aria-label="Borrar skill">${ic('trash')}</button>
@@ -275,14 +420,16 @@
   async function detailAction(action) {
     const skill = state.current;
     try {
-      if (action === 'duplicate') {
+      if (action === 'copy') {
+        await copyText(skill.body || '', 'Markdown de la skill copiado');
+      } else if (action === 'duplicate') {
         const copy = await send(`/api/skills/${skill.slug}/duplicate`, 'POST', {});
         toast(`Duplicada como ${copy.slug}`);
         await refresh(copy.slug);
       } else if (action === 'export') {
         window.location.href = `/api/skills/${skill.slug}/export`;
       } else if (action === 'close') {
-        closeSkill();
+        closeDetail();
       } else if (action === 'delete') {
         const sure = await confirmDanger(
           `Borrar "${skill.name}"`,
@@ -292,7 +439,7 @@
         toast('Skill borrada');
         state.current = null;
         await refresh();
-        closeSkill();
+        closeDetail();
       }
     } catch (error) { fail(error); }
   }
@@ -304,10 +451,14 @@
       .concat(skill.allowed_tools.length
         ? [['allowed-tools', skill.allowed_tools.join(', ')]] : [])
       .concat(extras.map(([key, value]) => [key, String(value)]));
+    const body = skill.body || '_Esta skill todavía no tiene contenido._';
     $('#tab-body').innerHTML = `
-      <div class="md">${window.md.render(skill.body || '_Esta skill todavía no tiene contenido._')}</div>
+      <div class="md-bar">${mdSwitch('skill')}<span class="md-bar-file">${esc(skill.slug)}/SKILL.md</span></div>
+      <div class="md" data-md-pane="rich">${window.md.render(body)}</div>
+      <pre class="code-view" data-md-pane="code">${esc(body)}</pre>
       ${strip.length ? `<div class="meta-strip">${strip.map(([key, value]) =>
         `<div><b>${esc(key)}</b> <span>${esc(value)}</span></div>`).join('')}</div>` : ''}`;
+    bindMdSwitch($('#tab-body'), 'skill');
   }
 
   /* --------------------------------------------------------------- files */
@@ -448,16 +599,21 @@
       .map((part, index) => index === segments.length - 1 ? `<b>${esc(part)}</b>` : esc(part))
       .join('<span class="sep">/</span>');
 
+    const markdown = file.editable && isMarkdown(file.path);
+
     panel.innerHTML = `
       <div class="editor-head">
         ${ic(file.editable ? 'file' : 'binary', 'ic-sm')}
         <span class="path">${pathHtml}</span>
         <span class="dirty hidden" id="dirty-flag">${ic('dot')}sin guardar</span>
+        ${markdown ? mdSwitch('file') : ''}
+        ${file.editable ? `<button class="ghost square" id="copy-file" title="Copiar el contenido" aria-label="Copiar el contenido">${ic('clipboard', 'ic-sm')}</button>` : ''}
         ${file.editable ? `<button class="primary" id="save-file">${ic('save', 'ic-sm')}Guardar</button>` : ''}
         <button class="ghost square" id="download-file" title="Descargar" aria-label="Descargar">${ic('download', 'ic-sm')}</button>
       </div>
       ${file.editable
-        ? `<textarea class="code" id="file-editor" spellcheck="false">${esc(file.content)}</textarea>`
+        ? `<textarea class="code" id="file-editor" spellcheck="false" data-md-pane="code">${esc(file.content)}</textarea>
+           ${markdown ? '<div class="md md-preview" data-md-pane="rich"></div>' : ''}`
         : `<div class="binary-note">
              ${isImage ? `<img src="${url}" alt="${esc(file.path)}">` : ic('binary')}
              <p>Archivo binario · ${humanSize(file.size)} · no editable aquí</p>
@@ -467,6 +623,11 @@
     if (!file.editable) return;
 
     const editor = $('#file-editor');
+    $('#copy-file').onclick = () => copyText(editor.value, `${file.path} copiado`);
+    // La vista previa se pinta con lo que hay en el editor, guardado o no.
+    if (markdown) {
+      bindMdSwitch(panel, 'file', (pane) => { pane.innerHTML = window.md.render(editor.value); });
+    }
     editor.oninput = () => {
       state.fileDirty = true;
       $('#dirty-flag').classList.remove('hidden');
@@ -593,9 +754,13 @@
           <label for="f-license">Licencia</label>
           <input id="f-license" value="${esc(skill.license)}" placeholder="MIT">
         </div>
-        <div class="field">
-          <label for="f-body">Contenido de SKILL.md (markdown)</label>
-          <textarea id="f-body" style="min-height:340px" spellcheck="false">${esc(skill.body)}</textarea>
+        <div class="field" id="f-body-field">
+          <div class="field-head">
+            <label for="f-body">Contenido de SKILL.md (markdown)</label>
+            ${mdSwitch('form')}
+          </div>
+          <textarea id="f-body" style="min-height:340px" spellcheck="false" data-md-pane="code">${esc(skill.body)}</textarea>
+          <div class="md md-preview" data-md-pane="rich"></div>
           <span class="hint">Ctrl/Cmd + S para guardar.</span>
         </div>
         <div class="form-actions">
@@ -607,6 +772,8 @@
     $$('#f-agents .chip').forEach((node) => {
       node.onclick = () => node.classList.toggle('on');
     });
+    bindMdSwitch($('#f-body-field'), 'form',
+      (pane) => { pane.innerHTML = window.md.render($('#f-body').value); });
     $('#f-cancel').onclick = () => { state.tab = 'view'; renderDetail(); };
     $('#edit-form').onsubmit = async (event) => {
       event.preventDefault();
@@ -635,6 +802,204 @@
       state.tab = 'view';
       await refresh(updated.slug);
     } catch (error) { fail(error); }
+  }
+
+  /* -------------------------------------------------------------- prompts */
+  async function openPrompt(slug, tab) {
+    try {
+      state.prompt = await api(`/api/prompts/${encodeURIComponent(slug)}`);
+      state.current = null;
+      state.file = null;
+      state.fileDirty = false;
+      state.promptTab = tab || 'view';
+      location.hash = '/p/' + slug;
+      $('#empty').classList.add('hidden');
+      $('#detail').classList.remove('hidden');
+      renderPromptDetail();
+      renderList();
+      renderPromptList();
+    } catch (error) { fail(error); }
+  }
+
+  function renderPromptDetail() {
+    const prompt = state.prompt;
+    const tabs = [['view', 'Contenido', 'eye'], ['edit', 'Editar', 'edit']];
+    $('#detail').innerHTML = `
+      <div class="detail-head">
+        <div class="detail-title">
+          <div>
+            <h2>${esc(prompt.name)}</h2>
+            <span class="slug">
+              <span><b>prompts/</b>${esc(prompt.slug)}.md</span>
+              <span>${humanSize(prompt.size_bytes)}</span>
+              ${prompt.updated ? `<span>${esc(prompt.updated.replace('T', ' '))}</span>` : ''}
+            </span>
+          </div>
+          <div class="detail-actions">
+            <button class="primary" data-pact="copy">${ic('clipboard', 'ic-sm')}Copiar</button>
+            <button class="ghost" data-pact="duplicate">${ic('copy', 'ic-sm')}Duplicar</button>
+            <button class="danger square" data-pact="delete" title="Borrar prompt" aria-label="Borrar prompt">${ic('trash')}</button>
+            <button class="ghost square" data-pact="close" title="Cerrar" aria-label="Cerrar">${ic('close')}</button>
+          </div>
+        </div>
+        ${prompt.tags.length ? `<div class="detail-meta">${
+          prompt.tags.map((t) => `<span class="tag">${ic('hash')}${esc(t)}</span>`).join('')}</div>` : ''}
+        <div class="tabs">${tabs.map(([key, label, icon]) =>
+          `<button class="tab${state.promptTab === key ? ' on' : ''}" data-ptab="${key}">${ic(icon, 'ic-sm')}${label}</button>`).join('')}</div>
+      </div>
+      <div class="tab-body" id="tab-body"></div>`;
+
+    $$('#detail .tab').forEach((node) => {
+      node.onclick = () => { state.promptTab = node.dataset.ptab; renderPromptDetail(); };
+    });
+    $$('#detail [data-pact]').forEach((node) => {
+      node.onclick = () => promptAction(node.dataset.pact);
+    });
+
+    if (state.promptTab === 'view') renderPromptView();
+    if (state.promptTab === 'edit') renderPromptEdit();
+  }
+
+  async function promptAction(action) {
+    const prompt = state.prompt;
+    try {
+      if (action === 'copy') {
+        await copyText(prompt.text, `“${prompt.name}” copiado`);
+      } else if (action === 'duplicate') {
+        const copy = await send(`/api/prompts/${prompt.slug}/duplicate`, 'POST', {});
+        toast(`Duplicado como ${copy.slug}`);
+        await refresh(null, copy.slug);
+      } else if (action === 'close') {
+        closeDetail();
+      } else if (action === 'delete') {
+        const sure = await confirmDanger(
+          `Borrar "${prompt.name}"`,
+          `Se eliminará el archivo prompts/${prompt.slug}.md. Esta acción no se puede deshacer.`);
+        if (!sure) return;
+        await send(`/api/prompts/${prompt.slug}`, 'DELETE');
+        toast('Prompt borrado');
+        state.prompt = null;
+        await refresh();
+        closeDetail();
+      }
+    } catch (error) { fail(error); }
+  }
+
+  function renderPromptView() {
+    const prompt = state.prompt;
+    $('#tab-body').innerHTML = `
+      <div class="md-bar">
+        ${mdSwitch('prompt')}
+        <button class="ghost" id="copy-prompt">${ic('clipboard', 'ic-sm')}Copiar el prompt</button>
+      </div>
+      <div class="md" data-md-pane="rich">${window.md.render(prompt.text)}</div>
+      <pre class="code-view" data-md-pane="code">${esc(prompt.text)}</pre>`;
+    bindMdSwitch($('#tab-body'), 'prompt');
+    $('#copy-prompt').onclick = () => copyText(prompt.text, `“${prompt.name}” copiado`);
+  }
+
+  function renderPromptEdit() {
+    const prompt = state.prompt;
+    $('#tab-body').innerHTML = `
+      <form class="form" id="prompt-form">
+        <div class="row2">
+          <div class="field">
+            <label for="p-name">Nombre</label>
+            <input id="p-name" value="${esc(prompt.name)}" required>
+          </div>
+          <div class="field">
+            <label for="p-slug">Identificador (archivo)</label>
+            <input id="p-slug" value="${esc(prompt.slug)}" pattern="[a-z0-9]+((-|_)[a-z0-9]+)*">
+            <span class="hint">Renombra el archivo en disco.</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="p-tags">Etiquetas</label>
+          <input id="p-tags" value="${esc(prompt.tags.join(', '))}" placeholder="redaccion, cliente">
+        </div>
+        <div class="field" id="p-text-field">
+          <div class="field-head">
+            <label for="p-text">El prompt</label>
+            ${mdSwitch('form')}
+          </div>
+          <textarea id="p-text" style="min-height:340px" spellcheck="false" data-md-pane="code">${esc(prompt.text)}</textarea>
+          <div class="md md-preview" data-md-pane="rich"></div>
+          <span class="hint">Ctrl/Cmd + S para guardar.</span>
+        </div>
+        <div class="form-actions">
+          <button class="primary" type="submit">${ic('save', 'ic-sm')}Guardar cambios</button>
+          <button class="ghost" type="button" id="p-cancel">Descartar</button>
+        </div>
+      </form>`;
+
+    bindMdSwitch($('#p-text-field'), 'form',
+      (pane) => { pane.innerHTML = window.md.render($('#p-text').value); });
+    $('#p-cancel').onclick = () => { state.promptTab = 'view'; renderPromptDetail(); };
+    $('#prompt-form').onsubmit = async (event) => {
+      event.preventDefault();
+      await savePromptForm();
+    };
+  }
+
+  async function savePromptForm() {
+    const payload = {
+      name: $('#p-name').value.trim(),
+      slug: $('#p-slug').value.trim(),
+      tags: splitList($('#p-tags').value),
+      text: $('#p-text').value,
+    };
+    try {
+      const updated = await send(`/api/prompts/${state.prompt.slug}`, 'PUT', payload);
+      toast('Cambios guardados');
+      state.promptTab = 'view';
+      await refresh(null, updated.slug);
+    } catch (error) { fail(error); }
+  }
+
+  function newPromptModal() {
+    modal('Nuevo prompt', `
+      <form class="form" id="new-prompt-form">
+        <div class="row2">
+          <div class="field"><label for="np-name">Nombre</label><input id="np-name" placeholder="Resumen ejecutivo" required></div>
+          <div class="field"><label for="np-slug">Identificador</label><input id="np-slug" placeholder="resumen-ejecutivo"></div>
+        </div>
+        <div class="field">
+          <label for="np-text">El prompt</label>
+          <textarea id="np-text" style="min-height:180px" spellcheck="false" placeholder="El texto que sueles pegar." required></textarea>
+        </div>
+        <div class="field"><label for="np-tags">Etiquetas</label><input id="np-tags" placeholder="redaccion, cliente"></div>
+        <div class="form-actions">
+          <button class="primary" type="submit">${ic('plus', 'ic-sm')}Crear prompt</button>
+          <button class="ghost" type="button" id="np-cancel">Cancelar</button>
+        </div>
+      </form>`, (root, close) => {
+      const name = $('#np-name', root);
+      const slug = $('#np-slug', root);
+      let slugTouched = false;
+      slug.oninput = () => { slugTouched = true; };
+      name.oninput = async () => {
+        if (slugTouched) return;
+        try {
+          const data = await send('/api/slugify', 'POST', { name: name.value });
+          if (!slugTouched) slug.value = data.slug;
+        } catch (_) { /* sugerencia opcional */ }
+      };
+      $('#np-cancel', root).onclick = close;
+      $('#new-prompt-form', root).onsubmit = async (event) => {
+        event.preventDefault();
+        try {
+          const created = await send('/api/prompts', 'POST', {
+            name: name.value.trim(),
+            slug: slug.value.trim(),
+            text: $('#np-text', root).value,
+            tags: splitList($('#np-tags', root).value),
+          });
+          close();
+          toast(`Prompt "${created.name}" creado`);
+          await refresh(null, created.slug);
+        } catch (error) { fail(error); }
+      };
+    });
   }
 
   /* ----------------------------------------------------------- new skill */
@@ -727,8 +1092,10 @@
           else if (path) result = await send('/api/import', 'POST', { path });
           else return toast(byPath ? 'Elige un zip o escribe una ruta.' : 'Elige un zip.', true);
           close();
-          toast(`Importadas ${result.imported.length} skills`);
-          await refresh(result.imported[0]);
+          const parts = [`${result.imported.length} skills`];
+          if ((result.prompts || []).length) parts.push(`${result.prompts.length} prompts`);
+          toast(`Importados: ${parts.join(' y ')}`);
+          await refresh(result.imported[0], (result.prompts || [])[0]);
         } catch (error) { fail(error); }
       };
     });
@@ -740,7 +1107,9 @@
     if (!query) return toast('Escribe algo en el buscador primero.', true);
     try {
       const data = await api(`/api/search?q=${encodeURIComponent(query)}`);
+      const found = data.prompts || [];
       state.current = null;
+      state.prompt = null;
       $('#empty').classList.add('hidden');
       $('#detail').classList.remove('hidden');
       $('#detail').innerHTML = `
@@ -750,6 +1119,7 @@
               <h2>“${esc(query)}”</h2>
               <span class="slug">
                 <span><b>${data.results.length}</b> skills con coincidencias en su contenido</span>
+                <span><b>${found.length}</b> prompts</span>
               </span>
             </div>
             <div class="detail-actions">
@@ -758,17 +1128,27 @@
           </div>
           <div class="tabs"></div>
         </div>
-        <div class="tab-body">${data.results.length ? data.results.map((hit) => `
+        <div class="tab-body">${data.results.map((hit) => `
           <div class="hit">
             <h4><a href="#/${esc(hit.slug)}" data-open="${esc(hit.slug)}">${esc(hit.name)}</a></h4>
             ${hit.matches.map((match) => `<div class="line">
               <span class="where">${esc(match.path)}:${match.line}</span> ${highlight(match.text, query)}
             </div>`).join('')}
-          </div>`).join('') : '<p class="list-empty">Sin coincidencias</p>'}</div>`;
+          </div>`).join('')}${found.map((hit) => `
+          <div class="hit">
+            <h4><a href="#/p/${esc(hit.slug)}" data-open-prompt="${esc(hit.slug)}">${ic('prompt', 'ic-sm')}${esc(hit.name)}</a></h4>
+            ${hit.matches.map((match) => `<div class="line">
+              <span class="where">prompts/${esc(hit.slug)}.md:${match.line}</span> ${highlight(match.text, query)}
+            </div>`).join('')}
+          </div>`).join('')}${
+          data.results.length || found.length ? '' : '<p class="list-empty">Sin coincidencias</p>'}</div>`;
       $$('#detail [data-open]').forEach((node) => {
         node.onclick = (event) => { event.preventDefault(); openSkill(node.dataset.open); };
       });
-      $('#detail [data-close-search]').onclick = closeSkill;
+      $$('#detail [data-open-prompt]').forEach((node) => {
+        node.onclick = (event) => { event.preventDefault(); openPrompt(node.dataset.openPrompt); };
+      });
+      $('#detail [data-close-search]').onclick = closeDetail;
     } catch (error) { fail(error); }
   }
 
@@ -780,13 +1160,19 @@
 
   /* ---------------------------------------------------------------- boot */
   function bindGlobal() {
-    $('#search').oninput = (event) => { state.query = event.target.value; renderList(); };
+    $('#search').oninput = (event) => {
+      state.query = event.target.value;
+      renderList();
+      renderPromptList();
+    };
     $('#search').onkeydown = (event) => { if (event.key === 'Enter') deepSearch(); };
     $('#btn-deep-search').onclick = deepSearch;
     $('#btn-new').onclick = newSkillModal;
+    $('#btn-new-prompt').onclick = newPromptModal;
     $('#btn-import').onclick = importModal;
     $('#btn-export-all').onclick = () => { window.location.href = '/api/export'; };
     $('[data-action="new"]').onclick = newSkillModal;
+    $('[data-action="new-prompt"]').onclick = newPromptModal;
 
     document.addEventListener('keydown', (event) => {
       const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
@@ -798,6 +1184,7 @@
         event.preventDefault();
         if ($('#file-editor')) saveFile();
         else if ($('#edit-form')) saveSkillForm();
+        else if ($('#prompt-form')) savePromptForm();
       }
     });
 
@@ -810,8 +1197,13 @@
     bindGlobal();
     try {
       await refresh();
-      const slug = location.hash.replace(/^#\//, '');
-      if (slug && state.skills.some((s) => s.slug === slug)) await openSkill(slug);
+      const route = location.hash.replace(/^#\//, '');
+      if (route.startsWith('p/')) {
+        const slug = route.slice(2);
+        if (state.prompts.some((p) => p.slug === slug)) await openPrompt(slug);
+      } else if (route && state.skills.some((s) => s.slug === route)) {
+        await openSkill(route);
+      }
     } catch (error) { fail(error); }
   }
 

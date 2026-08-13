@@ -20,6 +20,7 @@ import webbrowser
 from pathlib import Path
 
 from . import __version__
+from .prompts import default_prompts_root as prompts_sibling
 from .server import serve
 
 DEFAULT_PORT = 8777
@@ -43,6 +44,14 @@ def default_root() -> Path:
     if env:
         return Path(env).expanduser()
     return Path(__file__).resolve().parent.parent / "skills"
+
+
+def default_prompts(root: Path) -> Path:
+    """Carpeta de prompts: ``SKILLSBOOK_PROMPTS`` o la hermana de la biblioteca."""
+    env = os.environ.get("SKILLSBOOK_PROMPTS")
+    if env:
+        return Path(env).expanduser()
+    return prompts_sibling(root)
 
 
 def default_token() -> str:
@@ -108,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Biblioteca local de skills de agentes (Claude, ChatGPT, opencode…).",
     )
     parser.add_argument("--dir", "-d", default=None, help="Carpeta de la biblioteca de skills.")
+    parser.add_argument(
+        "--prompts-dir",
+        default=None,
+        help="Carpeta de la biblioteca de prompts (por defecto, hermana de la de skills).",
+    )
     parser.add_argument("--port", "-p", type=int, default=default_port(), help="Puerto HTTP.")
     parser.add_argument(
         "--host",
@@ -171,6 +185,7 @@ def _pick_port(host: str, port: int, strict: bool = False) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = Path(args.dir).expanduser() if args.dir else default_root()
+    prompts_root = Path(args.prompts_dir).expanduser() if args.prompts_dir else default_prompts(root)
     host = args.host
     local_only = is_loopback(host)
 
@@ -188,11 +203,14 @@ def main(argv: list[str] | None = None) -> int:
     httpd, store = serve(
         str(root), host, port, verbose,
         token=token, allow_path_import=allow_path_import,
+        prompts_root=str(prompts_root),
     )
     count = len(store.list_skills())
+    prompt_count = len(httpd.prompts.list_prompts())
 
     print(f"  Skills Book {__version__}")
     print(f"  Biblioteca : {store.root}  ({count} skills)")
+    print(f"  Prompts    : {httpd.prompts.root}  ({prompt_count} prompts)")
     if local_only:
         print(f"  Abierta en : http://{host}:{port}/")
     else:

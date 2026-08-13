@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .prompts import PromptStore, default_prompts_root
 from .store import Conflict, NotFound, SkillStore, StoreError, slugify
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -39,6 +40,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "SkillsBook"
     protocol_version = "HTTP/1.1"
     store: SkillStore
+    prompts: PromptStore
 
     # ------------------------------------------------------------------ helpers
     def log_message(self, fmt, *args):  # quieter console
@@ -137,7 +139,11 @@ class Handler(BaseHTTPRequestHandler):
         path = posixpath.normpath(unquote(urlparse(self.path).path))
         try:
             if path in PUBLIC_PATHS:
-                return self._json({"ok": True, "skills": len(self.server.store.list_skills())})
+                return self._json({
+                    "ok": True,
+                    "skills": len(self.server.store.list_skills()),
+                    "prompts": len(self.server.prompts.list_prompts()),
+                })
             if not self._authorized():
                 return self._ask_for_credentials()
             if path.startswith("/api/"):
@@ -175,10 +181,15 @@ class Handler(BaseHTTPRequestHandler):
     # ---------------------------------------------------------------------- api
     def _api(self, method: str, path: str):
         store = self.server.store  # type: ignore[attr-defined]
+        prompts = self.server.prompts  # type: ignore[attr-defined]
 
         if method == "GET" and path == "/api/stats":
             stats = store.stats()
             stats["path_import"] = bool(self.server.allow_path_import)  # type: ignore[attr-defined]
+            prompt_stats = prompts.stats()
+            stats["prompts"] = prompt_stats["count"]
+            stats["prompts_root"] = prompt_stats["root"]
+            stats["prompt_tags"] = prompt_stats["tags"]
             return self._json(stats)
 
         if method == "GET" and path == "/api/skills":
@@ -188,10 +199,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(store.create_skill(self._read_json()), 201)
 
         if method == "GET" and path == "/api/search":
-            return self._json({"results": store.search(self.query.get("q", ""))})
+            query = self.query.get("q", "")
+            return self._json({"results": store.search(query), "prompts": prompts.search(query)})
 
         if method == "GET" and path == "/api/export":
-            blob = store.export_all_zip()
+            blob = store.export_all_zip(prompts.export_members())
             return self._send(
                 200, blob, "application/zip",
                 {"Content-Disposition": 'attachment; filename="skills-book.zip"'},
@@ -206,7 +218,9 @@ class Handler(BaseHTTPRequestHandler):
                         "sube un zip.",
                         403,
                     )
-                return self._json({"imported": store.import_folder(str(data["path"]))}, 201)
+                return self._json(
+                    {"imported": store.import_folder(str(data["path"])), "prompts": []}, 201
+                )
             raw = data.get("zip_base64") or ""
             if not raw:
                 raise ApiError("Falta el zip o la ruta a importar.")
@@ -214,10 +228,41 @@ class Handler(BaseHTTPRequestHandler):
                 blob = base64.b64decode(raw.split(",")[-1], validate=False)
             except Exception as exc:
                 raise ApiError("El zip enviado no se pudo decodificar.") from exc
-            return self._json({"imported": store.import_zip(blob)}, 201)
+            # Un zip de la biblioteca lleva las dos cosas; uno de solo prompts
+            # no tiene ningun SKILL.md, y eso no es un error.
+            imported_prompts = prompts.import_zip(blob)
+            try:
+                imported = store.import_zip(blob)
+            except StoreError:
+                if not imported_prompts:
+                    raise
+                imported = []
+            return self._json({"imported": imported, "prompts": imported_prompts}, 201)
 
         if method == "POST" and path == "/api/slugify":
             return self._json({"slug": slugify(self._read_json().get("name", ""))})
+
+        if method == "GET" and path == "/api/prompts":
+            return self._json({"prompts": prompts.list_prompts()})
+
+        if method == "POST" and path == "/api/prompts":
+            return self._json(prompts.create_prompt(self._read_json()), 201)
+
+        params = _match("/api/prompts/{slug}", path)
+        if params:
+            slug = params["slug"]
+            if method == "GET":
+                return self._json(prompts.get_prompt(slug))
+            if method == "PUT":
+                return self._json(prompts.update_prompt(slug, self._read_json()))
+            if method == "DELETE":
+                prompts.delete_prompt(slug)
+                return self._json({"ok": True})
+
+        params = _match("/api/prompts/{slug}/duplicate", path)
+        if params and method == "POST":
+            data = self._read_json()
+            return self._json(prompts.duplicate_prompt(params["slug"], data.get("slug")), 201)
 
         params = _match("/api/skills/{slug}", path)
         if params:
@@ -303,12 +348,14 @@ class SkillsBookServer(ThreadingHTTPServer):
         self,
         address,
         store: SkillStore,
+        prompts: PromptStore,
         verbose: bool = False,
         token: str = "",
         allow_path_import: bool = True,
     ):
         super().__init__(address, Handler)
         self.store = store
+        self.prompts = prompts
         self.verbose = verbose
         self.token = token or ""
         self.allow_path_import = allow_path_import
@@ -322,12 +369,15 @@ def serve(
     *,
     token: str = "",
     allow_path_import: bool = True,
+    prompts_root: str | None = None,
 ):
     """Build a ready-to-run server bound to ``host:port`` over ``root``.
 
     ``token`` protege todo salvo ``/healthz``; ``allow_path_import`` controla
-    si ``POST /api/import`` acepta rutas del disco del servidor.
+    si ``POST /api/import`` acepta rutas del disco del servidor;
+    ``prompts_root`` es la carpeta de prompts (por defecto, hermana de ``root``).
     """
     store = SkillStore(root)
-    httpd = SkillsBookServer((host, port), store, verbose, token, allow_path_import)
+    prompts = PromptStore(prompts_root or default_prompts_root(root))
+    httpd = SkillsBookServer((host, port), store, prompts, verbose, token, allow_path_import)
     return httpd, store

@@ -428,7 +428,13 @@ class SkillStore:
                 archive.write(entry, f"{slug}/{entry.relative_to(path).as_posix()}")
         return buffer.getvalue()
 
-    def export_all_zip(self) -> bytes:
+    def export_all_zip(self, extra_members=None) -> bytes:
+        """Zip de la biblioteca entera.
+
+        ``extra_members`` son pares ``(nombre dentro del zip, archivo)`` que se
+        anaden tal cual: por ahi entran los prompts, que viven en otra carpeta
+        pero forman parte de la misma copia de seguridad.
+        """
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             for skill in self.list_skills():
@@ -437,6 +443,9 @@ class SkillStore:
                     if entry.is_symlink() or entry.is_dir():
                         continue
                     archive.write(entry, f"{skill['slug']}/{entry.relative_to(base).as_posix()}")
+            for arcname, path in extra_members or []:
+                if Path(path).is_file():
+                    archive.write(path, arcname)
         return buffer.getvalue()
 
     def import_zip(self, blob: bytes) -> list[str]:

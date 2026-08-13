@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from skillsbook import __main__ as main  # noqa: E402
 from skillsbook import frontmatter  # noqa: E402
+from skillsbook.prompts import PromptStore, default_prompts_root  # noqa: E402
 from skillsbook.server import serve  # noqa: E402
 from skillsbook.store import Conflict, NotFound, SkillStore, StoreError, slugify  # noqa: E402
 
@@ -244,6 +245,152 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(slugify("Revisión de Código!"), "revision-de-codigo")
 
 
+class PromptStoreTests(unittest.TestCase):
+    """La biblioteca de prompts: un archivo suelto por prompt."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.store = PromptStore(self.tmp / "prompts")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def make(self, name="Resumen ejecutivo", text="Resume en cinco viñetas.\n", **kwargs):
+        return self.store.create_prompt({"name": name, "text": text, **kwargs})
+
+    def test_create_writes_a_markdown_file(self):
+        prompt = self.make(tags=["redaccion", "cliente"])
+        path = self.store.root / "resumen-ejecutivo.md"
+        self.assertTrue(path.is_file())
+        self.assertEqual(prompt["slug"], "resumen-ejecutivo")
+        self.assertEqual(prompt["tags"], ["redaccion", "cliente"])
+        raw = path.read_text(encoding="utf-8")
+        self.assertIn("name: Resumen ejecutivo", raw)
+        self.assertIn("Resume en cinco viñetas.", raw)
+
+    def test_text_travels_with_the_listing(self):
+        self.make()
+        listing = self.store.list_prompts()
+        self.assertEqual(len(listing), 1)
+        self.assertIn("cinco viñetas", listing[0]["text"])
+
+    def test_listing_ignores_files_that_are_not_prompts(self):
+        self.make()
+        (self.store.root / "notas.txt").write_text("no soy un prompt\n", encoding="utf-8")
+        (self.store.root / "Mayúsculas.md").write_text("tampoco\n", encoding="utf-8")
+        self.assertEqual([p["slug"] for p in self.store.list_prompts()], ["resumen-ejecutivo"])
+
+    def test_name_and_text_are_required(self):
+        with self.assertRaises(StoreError):
+            self.store.create_prompt({"name": "", "text": "algo"})
+        with self.assertRaises(StoreError):
+            self.store.create_prompt({"name": "Vacio", "text": "   \n"})
+
+    def test_duplicate_slug_is_a_conflict(self):
+        self.make()
+        with self.assertRaises(Conflict):
+            self.make()
+
+    def test_update_and_rename_move_the_file(self):
+        self.make()
+        updated = self.store.update_prompt("resumen-ejecutivo", {
+            "name": "Resumen", "slug": "resumen", "text": "Otro texto.\n",
+        })
+        self.assertEqual(updated["slug"], "resumen")
+        self.assertEqual(updated["text"].strip(), "Otro texto.")
+        self.assertFalse((self.store.root / "resumen-ejecutivo.md").exists())
+        self.assertTrue((self.store.root / "resumen.md").is_file())
+
+    def test_update_keeps_the_text_when_only_the_name_changes(self):
+        self.make()
+        updated = self.store.update_prompt("resumen-ejecutivo", {"name": "Otro nombre"})
+        self.assertIn("cinco viñetas", updated["text"])
+
+    def test_unknown_frontmatter_keys_survive(self):
+        self.make()
+        path = self.store.root / "resumen-ejecutivo.md"
+        path.write_text(
+            "---\nname: Resumen ejecutivo\nx-origen: cuaderno\n---\n\ncuerpo\n", encoding="utf-8"
+        )
+        updated = self.store.update_prompt("resumen-ejecutivo", {"name": "Resumen"})
+        self.assertEqual(updated["extra"]["x-origen"], "cuaderno")
+
+    def test_emptying_the_tags_does_not_resurrect_them(self):
+        self.make(tags=["git"])
+        updated = self.store.update_prompt("resumen-ejecutivo", {"tags": []})
+        self.assertEqual(updated["tags"], [])
+
+    def test_delete_and_duplicate(self):
+        self.make()
+        copy = self.store.duplicate_prompt("resumen-ejecutivo")
+        self.assertEqual(copy["slug"], "resumen-ejecutivo-copia")
+        self.assertIn("(copia)", copy["name"])
+        self.store.delete_prompt("resumen-ejecutivo")
+        with self.assertRaises(NotFound):
+            self.store.get_prompt("resumen-ejecutivo")
+
+    def test_a_slug_can_never_leave_the_prompts_folder(self):
+        for bad in ("../fuera", "/etc/passwd", "..", "con espacio", "Mayus"):
+            with self.assertRaises(StoreError):
+                self.store.get_prompt(bad)
+        for bad in ("../fuera", "/etc/passwd"):
+            with self.assertRaises(StoreError):
+                self.store.create_prompt({"name": "x", "slug": bad, "text": "y"})
+        self.assertFalse((self.tmp / "fuera.md").exists())
+
+    def test_a_symlinked_prompt_is_not_readable(self):
+        secret = self.tmp / "secreto.md"
+        secret.write_text("---\nname: Secreto\n---\n\nno mirar\n", encoding="utf-8")
+        link = self.store.root / "enlace.md"
+        try:
+            link.symlink_to(secret)
+        except (OSError, NotImplementedError):  # pragma: no cover - Windows sin permisos
+            self.skipTest("este sistema no deja crear enlaces simbolicos")
+        with self.assertRaises(NotFound):
+            self.store.get_prompt("enlace")
+        self.assertEqual(self.store.list_prompts(), [])
+
+    def test_search_looks_at_the_text_and_the_name(self):
+        self.make()
+        self.make("Commit", "Escribe un commit convencional.\n")
+        by_text = self.store.search("convencional")
+        self.assertEqual(by_text[0]["slug"], "commit")
+        self.assertEqual(by_text[0]["matches"][0]["line"], 1)
+        self.assertEqual(self.store.search("resumen")[0]["slug"], "resumen-ejecutivo")
+        self.assertEqual(self.store.search(""), [])
+
+    def test_stats_counts_prompts_and_tags(self):
+        self.make(tags=["git"])
+        self.make("Commit", "texto\n", tags=["git", "escritura"])
+        stats = self.store.stats()
+        self.assertEqual(stats["count"], 2)
+        self.assertEqual(stats["tags"]["git"], 2)
+
+    def test_export_and_import_round_trip(self):
+        self.make(tags=["redaccion"])
+        skills = SkillStore(self.tmp / "skills")
+        blob = skills.export_all_zip(self.store.export_members())
+        names = zipfile.ZipFile(io.BytesIO(blob)).namelist()
+        self.assertIn("prompts/resumen-ejecutivo.md", names)
+
+        other = PromptStore(self.tmp / "restaurados")
+        self.assertEqual(other.import_zip(blob), ["resumen-ejecutivo"])
+        self.assertIn("cinco viñetas", other.get_prompt("resumen-ejecutivo")["text"])
+
+    def test_import_zip_ignores_anything_outside_prompts(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("prompts/../../evil.md", "boom")
+            archive.writestr("prompts/sub/otro.md", "tampoco")
+            archive.writestr("skills/demo/SKILL.md", "---\nname: x\n---\n")
+        self.assertEqual(self.store.import_zip(buffer.getvalue()), [])
+        self.assertFalse((self.tmp / "evil.md").exists())
+
+    def test_default_root_is_the_sibling_of_the_skills_library(self):
+        self.assertEqual(default_prompts_root("/var/lib/skillsbook/skills"),
+                         Path("/var/lib/skillsbook/prompts"))
+
+
 class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -334,9 +481,80 @@ class ApiTests(unittest.TestCase):
         status, payload = self.call("/healthz")
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
+        self.assertIn("prompts", payload)
 
     def test_path_import_allowed_by_default(self):
         self.assertTrue(self.call("/api/stats")[1]["path_import"])
+
+    # ------------------------------------------------------------- prompts
+    def test_prompt_lifecycle_over_http(self):
+        status, created = self.call("/api/prompts", "POST", {
+            "name": "Resumen ejecutivo", "text": "Resume en cinco viñetas.", "tags": ["redaccion"],
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(created["slug"], "resumen-ejecutivo")
+
+        status, listing = self.call("/api/prompts")
+        self.assertIn("resumen-ejecutivo", [p["slug"] for p in listing["prompts"]])
+
+        status, copy = self.call("/api/prompts/resumen-ejecutivo/duplicate", "POST", {})
+        self.assertEqual(status, 201)
+        self.assertEqual(copy["slug"], "resumen-ejecutivo-copia")
+
+        status, updated = self.call("/api/prompts/resumen-ejecutivo", "PUT",
+                                    {"name": "Resumen", "slug": "resumen"})
+        self.assertEqual(updated["slug"], "resumen")
+        self.assertIn("cinco viñetas", updated["text"])
+
+        status, _ = self.call("/api/prompts/resumen", "DELETE")
+        self.assertEqual(status, 200)
+        self.call("/api/prompts/resumen-ejecutivo-copia", "DELETE")
+        self.assertEqual(self.call("/api/prompts/resumen")[0], 404)
+
+    def test_prompt_errors_come_back_as_json(self):
+        status, payload = self.call("/api/prompts", "POST", {"name": "Sin texto", "text": ""})
+        self.assertEqual(status, 400)
+        self.assertIn("error", payload)
+        self.assertEqual(self.call("/api/prompts/NO-EXISTE")[0], 400)
+
+    def test_stats_and_search_include_prompts(self):
+        self.call("/api/prompts", "POST", {"name": "Buscable", "text": "una aguja en el pajar"})
+        stats = self.call("/api/stats")[1]
+        self.assertGreaterEqual(stats["prompts"], 1)
+        self.assertIn("prompts_root", stats)
+        results = self.call("/api/search?q=aguja")[1]
+        self.assertEqual(results["prompts"][0]["slug"], "buscable")
+        self.call("/api/prompts/buscable", "DELETE")
+
+    def test_export_and_import_carry_the_prompts(self):
+        self.call("/api/prompts", "POST", {"name": "Exportable", "text": "texto exportable"})
+        status, blob = self.call("/api/export")
+        self.assertEqual(status, 200)
+        self.assertIn("prompts/exportable.md", zipfile.ZipFile(io.BytesIO(blob)).namelist())
+
+        status, result = self.call("/api/import", "POST",
+                                   {"zip_base64": base64.b64encode(blob).decode()})
+        self.assertEqual(status, 201)
+        self.assertIn("exportable-2", result["prompts"])
+
+    def test_import_of_a_zip_with_only_prompts(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("prompts/solo.md", "---\nname: Solo\n---\n\nsin skills\n")
+        status, result = self.call("/api/import", "POST",
+                                   {"zip_base64": base64.b64encode(buffer.getvalue()).decode()})
+        self.assertEqual(status, 201)
+        self.assertEqual(result["imported"], [])
+        self.assertEqual(result["prompts"], ["solo"])
+
+    def test_import_of_a_zip_without_skills_or_prompts_still_fails(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("cualquier/cosa.txt", "nada que importar")
+        status, payload = self.call("/api/import", "POST",
+                                    {"zip_base64": base64.b64encode(buffer.getvalue()).decode()})
+        self.assertEqual(status, 400)
+        self.assertIn("error", payload)
 
 
 class DeploymentTests(unittest.TestCase):
@@ -471,6 +689,18 @@ class LaunchTests(unittest.TestCase):
         finally:
             os.environ.pop("SKILLSBOOK_HOST", None)
             os.environ.pop("SKILLSBOOK_PORT", None)
+
+    def test_prompts_folder_defaults_to_the_sibling_and_obeys_the_env(self):
+        self.assertEqual(main.default_prompts(Path("/srv/skillsbook/skills")),
+                         Path("/srv/skillsbook/prompts"))
+        os.environ["SKILLSBOOK_PROMPTS"] = "/otro/sitio/prompts"
+        try:
+            self.assertEqual(main.default_prompts(Path("/srv/skillsbook/skills")),
+                             Path("/otro/sitio/prompts"))
+        finally:
+            os.environ.pop("SKILLSBOOK_PROMPTS", None)
+        args = main.build_parser().parse_args(["--prompts-dir", "/aqui"])
+        self.assertEqual(args.prompts_dir, "/aqui")
 
     def test_token_can_come_from_a_file(self):
         tmp = Path(tempfile.mkdtemp())
