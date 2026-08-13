@@ -1,13 +1,22 @@
 /* ==========================================================================
-   Skills Book — sistema visual "brutalismo moderno", solo tema oscuro.
+   Skills Book — sistema visual "brutalismo moderno", en claro y en oscuro.
    Reglas del sistema:
      · geometría a 0 radios, todo es caja; los bordes son estructura, no adorno
      · sombras duras y desplazadas (nunca difuminadas) para dar profundidad
      · la interfaz habla en monoespaciada; la prosa larga, en grotesca
      · un único acento de alta energía, usado con avaricia
+
+   Temas: el color vive entero en las variables de :root, así que cambiar de
+   tema es cambiar una sola tabla. El oscuro es el suelo (lo que ve quien
+   entra sin JS) y el claro se activa con [data-theme="light"] en <html>, que
+   pone el script en línea de index.html antes de pintar. Ninguna regla de
+   más abajo debería llevar un color literal: si hace falta uno nuevo, se
+   añade arriba y se declara en los dos temas.
    ========================================================================== */
 
 :root {
+  color-scheme: dark;
+
   /* --- superficies -------------------------------------------------- */
   --void:        #08080a;   /* fondo raíz */
   --panel:       #0e0e11;   /* paneles */
@@ -24,6 +33,9 @@
   --fg:          #f2f2f0;
   --fg-2:        #a3a3ad;
   --fg-3:        #6a6a76;
+  --prose:       #e2e2e0;   /* markdown renderizado: prosa larga */
+  --prose-strong:#ffffff;
+  --code-fg:     #d8d8dc;   /* código y textareas */
 
   /* --- señal -------------------------------------------------------- */
   --acc:         #ff5a1f;   /* acento primario */
@@ -34,6 +46,12 @@
   --ok:          #4ee39a;
   --danger:      #ff4242;
   --danger-ghost:#2a0d0d;
+
+  /* --- veladuras ---------------------------------------------------- */
+  --shade:       rgba(0,0,0,.55);        /* sombra de modales y toasts */
+  --backdrop:    rgba(4,4,6,.82);        /* fondo tras un modal */
+  --hatch-line:  rgba(255,255,255,.028); /* trama diagonal */
+  --cancel-filter: invert(1) opacity(.35); /* aspa del buscador (WebKit) */
 
   /* --- tipografía --------------------------------------------------- */
   --mono: "Berkeley Mono", "JetBrains Mono", "IBM Plex Mono", ui-monospace,
@@ -55,10 +73,49 @@
   --rule: 2px;
   --shadow-hard:  4px 4px 0 0 var(--line);
   --shadow-lift:  6px 6px 0 0 var(--acc);
-  --shadow-modal: 10px 10px 0 0 rgba(0,0,0,.55);
+  --shadow-modal: 10px 10px 0 0 var(--shade);
   --hatch: repeating-linear-gradient(
-             45deg, transparent 0 5px, rgba(255,255,255,.028) 5px 6px);
+             45deg, transparent 0 5px, var(--hatch-line) 5px 6px);
   --step: 200ms cubic-bezier(.2,.8,.2,1);
+}
+
+/* ------------------------------------------------------------- tema claro */
+/* Papel en vez de vacío: el fondo es el tono sucio y los paneles el blanco,
+   de modo que la jerarquía de superficies se invierte pero se conserva. El
+   naranja baja de brillo para que siga leyéndose sobre blanco. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --void:        #eceae3;
+  --panel:       #fdfdfb;
+  --sunken:      #f2f0e9;
+  --raise:       #f3f2ec;
+  --active:      #e5e3da;
+
+  --line:        #d9d7cd;
+  --line-2:      #bab8ac;
+  --line-3:      #8b8a7e;
+
+  --fg:          #16161a;
+  --fg-2:        #4b4b53;
+  --fg-3:        #6d6d76;
+  --prose:       #26262c;
+  --prose-strong:#000000;
+  --code-fg:     #2a2a33;
+
+  --acc:         #cf3f04;
+  --acc-dim:     #f0a882;
+  --acc-ghost:   #fceade;
+  --acc-ink:     #fffaf7;
+  --volt:        #6b5a00;
+  --ok:          #0f7a46;
+  --danger:      #c22121;
+  --danger-ghost:#f7dcdc;
+
+  --shade:       rgba(24,24,20,.28);
+  --backdrop:    rgba(40,38,32,.42);
+  --hatch-line:  rgba(0,0,0,.05);
+  --cancel-filter: opacity(.5);
 }
 
 /* ------------------------------------------------------------------ reset */
@@ -212,7 +269,7 @@ kbd {
 }
 .search-row input::placeholder { color: var(--fg-3); letter-spacing: .02em; }
 .search-row input:focus { outline: none; }
-.search-row input::-webkit-search-cancel-button { filter: invert(1) opacity(.35); }
+.search-row input::-webkit-search-cancel-button { filter: var(--cancel-filter); }
 .search-kbd { align-self: center; margin-right: 6px; }
 .search-row:focus-within .search-kbd { display: none; }
 .search-row .square {
@@ -622,7 +679,7 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.65;
-  color: #d8d8dc;
+  color: var(--code-fg);
   white-space: pre-wrap;
   word-break: break-word;
   tab-size: 2;
@@ -631,7 +688,7 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 #editor-panel > .md-preview { border: none; background: var(--panel); min-height: 55vh; }
 
 /* ---------------------------------------------------------------- markdown */
-.md { font-size: 14.5px; line-height: 1.72; color: #e2e2e0; }
+.md { font-size: 14.5px; line-height: 1.72; color: var(--prose); }
 .md h1, .md h2, .md h3, .md h4 {
   line-height: 1.15;
   margin: 2em 0 .6em;
@@ -670,7 +727,7 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
   font-family: var(--mono); font-size: 11px; color: var(--acc);
 }
 .md li { margin-bottom: .35em; }
-.md strong { color: #fff; font-weight: 700; }
+.md strong { color: var(--prose-strong); font-weight: 700; }
 .md code {
   font-family: var(--mono);
   font-size: 12.5px;
@@ -689,7 +746,7 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 }
 .md pre code {
   background: none; border: none; padding: 0;
-  font-size: 12.5px; line-height: 1.6; color: #d5d5d8;
+  font-size: 12.5px; line-height: 1.6; color: var(--code-fg);
 }
 .md blockquote {
   margin: 0 0 1.15em;
@@ -829,7 +886,7 @@ textarea.code {
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.65;
-  color: #d8d8dc;
+  color: var(--code-fg);
   background: var(--panel);
   min-height: 55vh;
   display: block;
@@ -905,7 +962,7 @@ textarea.code:focus { outline: none; background: var(--sunken); }
 /* ----------------------------------------------------------------- modales */
 .modal-backdrop {
   position: fixed; inset: 0;
-  background: rgba(4,4,6,.82);
+  background: var(--backdrop);
   display: grid; place-items: center;
   padding: 24px;
   z-index: 50;

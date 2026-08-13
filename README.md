@@ -156,6 +156,7 @@ puedes ver la vista previa sin perder lo que estabas escribiendo.
 - Árbol de carpetas con cualquier profundidad.
 - Crear archivos y carpetas, renombrar, mover y borrar.
 - Editor de texto integrado con guardado por `Ctrl/Cmd + S`.
+- Tema claro y oscuro, con la opción de seguir al sistema.
 - Subir archivos binarios (imágenes, PDF, zip…) y previsualizar imágenes.
 - Descargar cualquier archivo suelto.
 - Los `.sh` se marcan como ejecutables automáticamente.
@@ -172,12 +173,13 @@ puedes ver la vista previa sin perder lo que estabas escribiendo.
 | `/` | Ir al buscador |
 | `Intro` en el buscador | Buscar dentro del contenido de los archivos |
 | `Ctrl/Cmd + S` | Guardar el archivo o el formulario abierto |
+| `T` | Cambiar de tema: sistema → claro → oscuro |
 
 ---
 
 ## La interfaz
 
-Brutalismo moderno, solo en oscuro. Las reglas del sistema, por si tocas el CSS:
+Brutalismo moderno, en claro y en oscuro. Las reglas del sistema, por si tocas el CSS:
 
 - **Geometría a cero radios.** Todo es caja; el borde es estructura, no adorno. Las sombras
   son duras y desplazadas (`4px 4px 0`), nunca difuminadas.
@@ -192,8 +194,15 @@ Brutalismo moderno, solo en oscuro. Las reglas del sistema, por si tocas el CSS:
 - **Movimiento contenido.** Solo desplazamientos de 2 px con sombra dura al pasar por encima,
   y todo se desactiva con `prefers-reduced-motion`.
 
-Los tokens (superficies, líneas, tinta, señal, tipografía y geometría) están al principio de
-`styles.css`: cambiando ese bloque cambia el tema entero.
+- **Dos temas, una sola tabla de color.** El botón del pie de la barra lateral (o la tecla `T`)
+  recorre sistema → claro → oscuro. «Sistema» sigue al ajuste del escritorio, incluso si cambia
+  con la app abierta; la preferencia se guarda en `localStorage` (`sb-theme`) y se aplica antes
+  de pintar, así que no hay fogonazo al recargar.
+
+Los tokens (superficies, líneas, tinta, señal, veladuras, tipografía y geometría) están al
+principio de `styles.css`: el bloque `:root` es el tema oscuro y `:root[data-theme="light"]` el
+claro. Ninguna regla del resto del archivo lleva un color literal, así que cambiar esos dos
+bloques cambia el tema entero; si añades un color nuevo, decláralo en los dos.
 
 ---
 
@@ -283,7 +292,7 @@ skillsbook/
 ├── frontmatter.py    # lectura/escritura del YAML de cabecera
 └── static/
     ├── index.html
-    ├── styles.css    # sistema visual: brutalismo moderno, tema oscuro
+    ├── styles.css    # sistema visual: brutalismo moderno, temas claro y oscuro
     ├── app.js        # interfaz
     └── markdown.js   # renderizador de markdown
 skills/               # tu biblioteca (incluye 3 skills de ejemplo)
