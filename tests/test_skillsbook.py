@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
+import os
 import shutil
+import socket
 import sys
 import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from skillsbook import __main__ as main  # noqa: E402
 from skillsbook import frontmatter  # noqa: E402
 from skillsbook.server import serve  # noqa: E402
 from skillsbook.store import Conflict, NotFound, SkillStore, StoreError, slugify  # noqa: E402
@@ -324,6 +329,159 @@ class ApiTests(unittest.TestCase):
         with urllib.request.urlopen(self.base + "/") as response:
             self.assertEqual(response.status, 200)
             self.assertIn(b"Skills Book", response.read())
+
+    def test_healthz_answers_without_token(self):
+        status, payload = self.call("/healthz")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+
+    def test_path_import_allowed_by_default(self):
+        self.assertTrue(self.call("/api/stats")[1]["path_import"])
+
+
+class DeploymentTests(unittest.TestCase):
+    """Lo que cambia al publicar la app en la LAN: token y candados."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.httpd, cls.store = serve(
+            str(cls.tmp / "skills"), "127.0.0.1", 0,
+            token="secreto-de-prueba", allow_path_import=False,
+        )
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def call(self, path, method="GET", body=None, headers=None):
+        request = urllib.request.Request(
+            self.base + path,
+            method=method,
+            data=None if body is None else json.dumps(body).encode(),
+            headers={"Content-Type": "application/json", **(headers or {})},
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                raw = response.read()
+                ctype = response.headers.get("Content-Type", "")
+                return response.status, (json.loads(raw) if "json" in ctype else raw)
+        except urllib.error.HTTPError as error:
+            return error.code, json.loads(error.read())
+
+    @staticmethod
+    def basic(password, user="skills"):
+        pair = base64.b64encode(f"{user}:{password}".encode()).decode()
+        return {"Authorization": f"Basic {pair}"}
+
+    def test_without_credentials_everything_is_401(self):
+        for path in ("/", "/api/skills", "/api/stats"):
+            status, _ = self.call(path)
+            self.assertEqual(status, 401, path)
+
+    def test_wrong_token_is_rejected(self):
+        status, _ = self.call("/api/skills", headers=self.basic("otro"))
+        self.assertEqual(status, 401)
+
+    def test_basic_auth_with_the_token_opens_the_door(self):
+        status, payload = self.call("/api/skills", headers=self.basic("secreto-de-prueba"))
+        self.assertEqual(status, 200)
+        self.assertIn("skills", payload)
+
+    def test_token_header_also_works(self):
+        status, _ = self.call("/api/stats", headers={"X-Skillsbook-Token": "secreto-de-prueba"})
+        self.assertEqual(status, 200)
+
+    def test_healthz_stays_open_for_the_healthcheck(self):
+        status, payload = self.call("/healthz")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+
+    def test_folder_import_is_refused_when_disabled(self):
+        status, payload = self.call(
+            "/api/import", "POST", {"path": "/etc"},
+            headers=self.basic("secreto-de-prueba"),
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("error", payload)
+
+    def test_zip_import_still_works_when_paths_are_off(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("traida/SKILL.md", "---\nname: Traida\n---\n\ncuerpo\n")
+        status, payload = self.call(
+            "/api/import", "POST",
+            {"zip_base64": base64.b64encode(buffer.getvalue()).decode()},
+            headers=self.basic("secreto-de-prueba"),
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(payload["imported"], ["traida"])
+
+    def test_stats_tell_the_ui_that_path_import_is_off(self):
+        _, payload = self.call("/api/stats", headers=self.basic("secreto-de-prueba"))
+        self.assertFalse(payload["path_import"])
+
+
+class LaunchTests(unittest.TestCase):
+    """Decisiones de arranque: local abre navegador, LAN no salta de puerto."""
+
+    def test_loopback_detection(self):
+        for host in ("127.0.0.1", "localhost", "::1", "127.0.1.1"):
+            self.assertTrue(main.is_loopback(host), host)
+        for host in ("0.0.0.0", "192.168.1.50", "::", "no-es-una-ip"):
+            self.assertFalse(main.is_loopback(host), host)
+
+    def test_env_flag_reads_the_usual_spellings(self):
+        for raw in ("1", "true", "YES", "on", "si"):
+            os.environ["SKILLSBOOK_TEST_FLAG"] = raw
+            self.assertTrue(main.env_flag("SKILLSBOOK_TEST_FLAG"))
+        for raw in ("0", "false", "no", "off"):
+            os.environ["SKILLSBOOK_TEST_FLAG"] = raw
+            self.assertFalse(main.env_flag("SKILLSBOOK_TEST_FLAG", default=True))
+        os.environ.pop("SKILLSBOOK_TEST_FLAG", None)
+        self.assertTrue(main.env_flag("SKILLSBOOK_TEST_FLAG", default=True))
+
+    def test_strict_port_fails_instead_of_moving(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
+            taken.bind(("127.0.0.1", 0))
+            taken.listen(1)
+            port = taken.getsockname()[1]
+            with self.assertRaises(SystemExit):
+                main._pick_port("127.0.0.1", port, strict=True)
+
+    def test_without_strict_it_hops_to_the_next_free_port(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
+            taken.bind(("127.0.0.1", 0))
+            taken.listen(1)
+            port = taken.getsockname()[1]
+            self.assertNotEqual(main._pick_port("127.0.0.1", port), port)
+
+    def test_env_configures_host_port_and_library(self):
+        os.environ["SKILLSBOOK_HOST"] = "0.0.0.0"
+        os.environ["SKILLSBOOK_PORT"] = "9100"
+        try:
+            args = main.build_parser().parse_args([])
+            self.assertEqual(args.host, "0.0.0.0")
+            self.assertEqual(args.port, 9100)
+        finally:
+            os.environ.pop("SKILLSBOOK_HOST", None)
+            os.environ.pop("SKILLSBOOK_PORT", None)
+
+    def test_token_can_come_from_a_file(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            secret = tmp / "token.txt"
+            secret.write_text("desde-fichero\n", encoding="utf-8")
+            os.environ["SKILLSBOOK_TOKEN_FILE"] = str(secret)
+            self.assertEqual(main.default_token(), "desde-fichero")
+        finally:
+            os.environ.pop("SKILLSBOOK_TOKEN_FILE", None)
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

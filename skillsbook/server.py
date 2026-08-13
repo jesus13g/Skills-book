@@ -7,6 +7,7 @@ JSON API on top of :class:`skillsbook.store.SkillStore`.
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import mimetypes
 import posixpath
@@ -19,6 +20,7 @@ from .store import Conflict, NotFound, SkillStore, StoreError, slugify
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY_BYTES = 96 * 1024 * 1024
+PUBLIC_PATHS = ("/healthz",)  # sin token: sondas de Docker, systemd o el balanceador
 
 
 class ApiError(Exception):
@@ -79,6 +81,42 @@ class Handler(BaseHTTPRequestHandler):
         raw = parse_qs(urlparse(self.path).query)
         return {key: values[0] for key, values in raw.items()}
 
+    # --------------------------------------------------------------------- auth
+    def _authorized(self) -> bool:
+        """Basic auth (contrasena = token) o cabecera ``X-Skillsbook-Token``.
+
+        Basic auth es lo unico que el navegador sabe hacer solo: pide las
+        credenciales, las recuerda y las manda tambien en las descargas
+        (``/api/export``), sin tocar el frontend.
+        """
+        token = self.server.token  # type: ignore[attr-defined]
+        if not token:
+            return True
+        header = self.headers.get("Authorization") or ""
+        if header[:6].lower() == "basic ":
+            try:
+                decoded = base64.b64decode(header[6:].strip()).decode("utf-8")
+            except Exception:
+                decoded = ""
+            password = decoded.partition(":")[2]
+            if hmac.compare_digest(password, token) or hmac.compare_digest(decoded, token):
+                return True
+        supplied = self.headers.get("X-Skillsbook-Token") or ""
+        return bool(supplied) and hmac.compare_digest(supplied, token)
+
+    def _ask_for_credentials(self):
+        # El cuerpo de la peticion se queda sin leer, asi que esta conexion ya
+        # no es reutilizable: se cierra para no confundir al siguiente mensaje.
+        self.close_connection = True
+        body = json.dumps({"error": "Necesitas el token de acceso."}).encode("utf-8")
+        self._send(
+            401, body, "application/json; charset=utf-8",
+            {
+                "WWW-Authenticate": 'Basic realm="Skills Book", charset="UTF-8"',
+                "Connection": "close",
+            },
+        )
+
     # -------------------------------------------------------------------- verbs
     def do_GET(self):
         self._dispatch("GET")
@@ -98,6 +136,10 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str):
         path = posixpath.normpath(unquote(urlparse(self.path).path))
         try:
+            if path in PUBLIC_PATHS:
+                return self._json({"ok": True, "skills": len(self.server.store.list_skills())})
+            if not self._authorized():
+                return self._ask_for_credentials()
             if path.startswith("/api/"):
                 self._api(method, path)
             elif method == "GET":
@@ -135,7 +177,9 @@ class Handler(BaseHTTPRequestHandler):
         store = self.server.store  # type: ignore[attr-defined]
 
         if method == "GET" and path == "/api/stats":
-            return self._json(store.stats())
+            stats = store.stats()
+            stats["path_import"] = bool(self.server.allow_path_import)  # type: ignore[attr-defined]
+            return self._json(stats)
 
         if method == "GET" and path == "/api/skills":
             return self._json({"skills": store.list_skills()})
@@ -156,6 +200,12 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and path == "/api/import":
             data = self._read_json()
             if data.get("path"):
+                if not self.server.allow_path_import:  # type: ignore[attr-defined]
+                    raise ApiError(
+                        "La importacion por ruta esta desactivada en este servidor: "
+                        "sube un zip.",
+                        403,
+                    )
                 return self._json({"imported": store.import_folder(str(data["path"]))}, 201)
             raw = data.get("zip_base64") or ""
             if not raw:
@@ -249,14 +299,35 @@ class SkillsBookServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address, store: SkillStore, verbose: bool = False):
+    def __init__(
+        self,
+        address,
+        store: SkillStore,
+        verbose: bool = False,
+        token: str = "",
+        allow_path_import: bool = True,
+    ):
         super().__init__(address, Handler)
         self.store = store
         self.verbose = verbose
+        self.token = token or ""
+        self.allow_path_import = allow_path_import
 
 
-def serve(root: str, host: str = "127.0.0.1", port: int = 8777, verbose: bool = False):
-    """Build a ready-to-run server bound to ``host:port`` over ``root``."""
+def serve(
+    root: str,
+    host: str = "127.0.0.1",
+    port: int = 8777,
+    verbose: bool = False,
+    *,
+    token: str = "",
+    allow_path_import: bool = True,
+):
+    """Build a ready-to-run server bound to ``host:port`` over ``root``.
+
+    ``token`` protege todo salvo ``/healthz``; ``allow_path_import`` controla
+    si ``POST /api/import`` acepta rutas del disco del servidor.
+    """
     store = SkillStore(root)
-    httpd = SkillsBookServer((host, port), store, verbose)
+    httpd = SkillsBookServer((host, port), store, verbose, token, allow_path_import)
     return httpd, store

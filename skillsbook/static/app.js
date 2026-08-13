@@ -695,6 +695,9 @@
 
   /* -------------------------------------------------------------- import */
   function importModal() {
+    /* En un servidor compartido la ruta sería la del servidor, no la tuya:
+       el backend la desactiva y aquí ni se ofrece. */
+    const byPath = !state.stats || state.stats.path_import !== false;
     modal('Importar skills', `
       <div class="form">
         <div class="field">
@@ -702,11 +705,12 @@
           <input type="file" id="i-zip" accept=".zip">
           <span class="hint">Acepta un zip con una skill (SKILL.md en la raíz) o con varias carpetas de skills.</span>
         </div>
+        ${byPath ? `
         <div class="field">
           <label for="i-path">Desde una carpeta local</label>
           <input id="i-path" placeholder="~/.claude/skills">
           <span class="hint">Copia la carpeta (o cada subcarpeta con SKILL.md) a la biblioteca.</span>
-        </div>
+        </div>` : ''}
         <div class="form-actions">
           <button class="primary" id="i-go">${ic('import', 'ic-sm')}Importar</button>
           <button class="ghost" id="i-cancel">Cancelar</button>
@@ -715,12 +719,13 @@
       $('#i-cancel', root).onclick = close;
       $('#i-go', root).onclick = async () => {
         const file = $('#i-zip', root).files[0];
-        const path = $('#i-path', root).value.trim();
+        const pathInput = $('#i-path', root);
+        const path = pathInput ? pathInput.value.trim() : '';
         try {
           let result;
           if (file) result = await send('/api/import', 'POST', { zip_base64: await readAsBase64(file) });
           else if (path) result = await send('/api/import', 'POST', { path });
-          else return toast('Elige un zip o escribe una ruta.', true);
+          else return toast(byPath ? 'Elige un zip o escribe una ruta.' : 'Elige un zip.', true);
           close();
           toast(`Importadas ${result.imported.length} skills`);
           await refresh(result.imported[0]);

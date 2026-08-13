@@ -1,0 +1,40 @@
+# Skills Book como servicio de systemd (servidor Linux sin Docker).
+#
+#   sudo cp deploy/linux/skillsbook.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/skillsbook.service   # ajusta rutas y usuario
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now skillsbook
+#   systemctl status skillsbook
+#   journalctl -u skillsbook -f
+[Unit]
+Description=Skills Book — biblioteca de skills para agentes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skillsbook
+Group=skillsbook
+WorkingDirectory=/opt/skillsbook
+# Ajusta las rutas si no lo instalaste en /opt/skillsbook.
+EnvironmentFile=-/opt/skillsbook/servidor.env
+Environment=SKILLSBOOK_HOST=0.0.0.0
+Environment=SKILLSBOOK_PORT=8777
+Environment=SKILLSBOOK_HOME=/var/lib/skillsbook/skills
+Environment=SKILLSBOOK_NO_BROWSER=1
+Environment=SKILLSBOOK_STRICT_PORT=1
+Environment=SKILLSBOOK_ALLOW_PATH_IMPORT=0
+ExecStart=/usr/bin/python3 -m skillsbook
+Restart=on-failure
+RestartSec=5
+
+# La app solo necesita escribir en su biblioteca.
+StateDirectory=skillsbook
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/skillsbook
+
+[Install]
+WantedBy=multi-user.target
