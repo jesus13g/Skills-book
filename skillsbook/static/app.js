@@ -179,21 +179,26 @@
   const isMarkdown = (path) => /\.(md|markdown)$/i.test(path || '');
 
   /* --------------------------------------------------------------- modals */
-  function modal(title, innerHtml, onMount) {
+  /* ``options.className`` añade modificadores al diálogo (``wide`` para el
+     explorador). El listener de Escape se retira siempre al cerrar, se cierre
+     como se cierre: si no, cada modal dejaría el suyo detrás. */
+  function modal(title, innerHtml, onMount, options = {}) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal ${options.className || ''}" role="dialog" aria-modal="true">
         <div class="modal-head"><h3>${esc(title)}</h3></div>
         <div class="modal-body">${innerHtml}</div>
       </div>`;
-    const close = () => backdrop.remove();
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    const close = () => {
+      document.removeEventListener('keydown', onKey);
+      backdrop.remove();
+    };
     backdrop.addEventListener('mousedown', (event) => {
       if (event.target === backdrop) close();
     });
-    document.addEventListener('keydown', function onKey(event) {
-      if (event.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
-    });
+    document.addEventListener('keydown', onKey);
     $('#modal-root').appendChild(backdrop);
     onMount($('.modal', backdrop), close);
     const firstInput = $('input, textarea', backdrop);
@@ -254,32 +259,175 @@
     if (goneSkill || gonePrompt) closeDetail();
   }
 
-  function renderFilters() {
-    const agents = Object.keys(state.stats.agents || {}).filter((a) => a !== 'sin-agente');
-    // Una etiqueta es una etiqueta, venga de una skill o de un prompt.
+  /* Una etiqueta es una etiqueta, venga de una skill o de un prompt: las dos
+     tablas de recuentos se suman en una sola lista ordenada por uso. */
+  function tagPool() {
     const pool = { ...(state.stats.tags || {}) };
     for (const [tag, count] of Object.entries(state.stats.prompt_tags || {})) {
       pool[tag] = (pool[tag] || 0) + count;
     }
-    const tags = Object.keys(pool).slice(0, 12);
-    const chip = (label, kind, count) =>
-      `<button class="chip${state.filters[kind].has(label) ? ' on' : ''}" data-filter="${kind}" data-value="${esc(label)}">${
-        esc(label)}${count ? `<span class="count">${count}</span>` : ''}</button>`;
+    return Object.entries(pool).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
+  /* Cuántas etiquetas caben en la barra sin convertirla en un muro de chips.
+     El resto vive en el desplegable, que además tiene buscador. */
+  const TAG_PREVIEW = 6;
+
+  function toggleFilter(kind, value) {
+    const set = state.filters[kind];
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+    renderFilters();
+    renderList();
+    renderPromptList();
+  }
+
+  function renderFilters() {
+    const agents = Object.keys(state.stats.agents || {}).filter((a) => a !== 'sin-agente');
+    const all = tagPool();
+    const active = all.filter(([tag]) => state.filters.tags.has(tag));
+    // Lo que está activo se ve siempre; lo demás, solo las etiquetas más usadas.
+    const preview = all.filter(([tag]) => !state.filters.tags.has(tag)).slice(0, TAG_PREVIEW);
+    const shown = active.concat(preview);
+    const hidden = all.length - shown.length;
+    const activeCount = state.filters.agents.size + state.filters.tags.size;
+
+    const chip = (label, kind, value, count) =>
+      `<button class="chip${state.filters[kind].has(value) ? ' on' : ''}" data-filter="${kind}" data-value="${
+        esc(value)}">${esc(label)}${count ? `<span class="count">${count}</span>` : ''}</button>`;
+
+    $('#filter-block').classList.toggle('hidden', !agents.length && !all.length);
     $('#filters').innerHTML =
-      agents.map((a) => chip(a, 'agents', state.stats.agents[a])).join('') +
-      tags.map((t) => chip('#' + t, 'tags', 0)).join('');
-    $$('#filters .chip').forEach((node) => {
-      node.onclick = () => {
-        const kind = node.dataset.filter;
-        const value = kind === 'tags' ? node.dataset.value.slice(1) : node.dataset.value;
-        const set = state.filters[kind];
-        if (set.has(kind === 'tags' ? '#' + value : value)) set.delete(kind === 'tags' ? '#' + value : value);
-        else set.add(kind === 'tags' ? '#' + value : value);
+      agents.map((a) => chip(a, 'agents', a, state.stats.agents[a])).join('') +
+      // Agentes y etiquetas filtran cosas distintas: cada grupo, en su renglón.
+      (agents.length && shown.length ? '<span class="chip-break"></span>' : '') +
+      shown.map(([tag, count]) => chip('#' + tag, 'tags', tag, count)).join('') +
+      (hidden > 0
+        ? `<button class="chip more" id="chip-more-tags">+${hidden} etiquetas${ic('chevron', 'ic-sm')}</button>`
+        : '') +
+      (activeCount
+        ? `<button class="chip clear" id="chip-clear-filters">${ic('close', 'ic-sm')}limpiar</button>`
+        : '');
+
+    $$('#filters .chip[data-filter]').forEach((node) => {
+      node.onclick = () => toggleFilter(node.dataset.filter, node.dataset.value);
+    });
+    const more = $('#chip-more-tags');
+    if (more) more.onclick = () => openTagPicker('#chip-more-tags');
+    const clear = $('#chip-clear-filters');
+    if (clear) {
+      clear.onclick = () => {
+        state.filters.agents.clear();
+        state.filters.tags.clear();
         renderFilters();
         renderList();
         renderPromptList();
       };
-    });
+    }
+  }
+
+  /* ------------------------------------------------------- desplegable tags */
+  /* Una barra lateral estrecha no puede enseñar cincuenta etiquetas, pero
+     tampoco puede esconderlas: el desplegable las tiene todas con su buscador,
+     y se queda abierto mientras marcas varias. */
+  let closeTagPicker = null;
+
+  /* ``anchorSel`` se resuelve en cada uso y no se guarda: marcar una etiqueta
+     repinta los chips, así que el botón de antes ya no está en el documento y
+     su posición sería (0, 0). Si el chip "+N" desaparece al filtrar, el
+     desplegable se ancla al botón de la cabecera, que siempre está. */
+  function openTagPicker(anchorSel) {
+    if (closeTagPicker) { closeTagPicker(); return; }
+    const at = () => $(anchorSel) || $('#btn-tag-picker');
+    const pop = document.createElement('div');
+    pop.className = 'tag-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', 'Etiquetas');
+    pop.innerHTML = `
+      <div class="tag-pop-head">
+        <span class="search-icon">${ic('search', 'ic-sm')}</span>
+        <input id="tag-pop-search" type="search" autocomplete="off"
+               placeholder="Buscar etiqueta" aria-label="Buscar etiqueta">
+        <button class="icon" id="tag-pop-close" title="Cerrar" aria-label="Cerrar">${ic('close', 'ic-sm')}</button>
+      </div>
+      <div class="tag-pop-list" id="tag-pop-list"></div>
+      <div class="tag-pop-foot"><span id="tag-pop-count"></span>
+        <button class="ghost" id="tag-pop-clear">Limpiar</button></div>`;
+    document.body.appendChild(pop);
+
+    const place = () => {
+      const box = at().getBoundingClientRect();
+      const width = pop.offsetWidth;
+      const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8));
+      const below = window.innerHeight - box.bottom - 12;
+      pop.style.left = `${left}px`;
+      // Si abajo no cabe y arriba sí, el desplegable sube.
+      if (below < 200 && box.top > below) {
+        pop.style.top = 'auto';
+        pop.style.bottom = `${window.innerHeight - box.top + 6}px`;
+      } else {
+        pop.style.bottom = 'auto';
+        pop.style.top = `${box.bottom + 6}px`;
+      }
+    };
+
+    const search = $('#tag-pop-search', pop);
+    const draw = () => {
+      const query = search.value.trim().toLowerCase();
+      const all = tagPool();
+      const rows = all.filter(([tag]) => !query || tag.toLowerCase().includes(query));
+      $('#tag-pop-list', pop).innerHTML = rows.length
+        ? rows.map(([tag, count]) => `
+            <button class="tag-row${state.filters.tags.has(tag) ? ' on' : ''}" data-tag="${esc(tag)}">
+              ${ic('check', 'ic-sm')}<span class="name">${esc(tag)}</span><span class="count">${count}</span>
+            </button>`).join('')
+        : '<p class="list-empty">Ninguna etiqueta coincide</p>';
+      $('#tag-pop-count', pop).textContent =
+        `${state.filters.tags.size} de ${all.length} activas`;
+      $$('.tag-row', pop).forEach((node) => {
+        node.onclick = () => {
+          toggleFilter('tags', node.dataset.tag);
+          draw();
+          place();
+        };
+      });
+    };
+
+    const close = () => {
+      document.removeEventListener('mousedown', onOutside, true);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('resize', place);
+      pop.remove();
+      closeTagPicker = null;
+    };
+    function onOutside(event) {
+      const anchor = at();
+      if (!pop.contains(event.target) && !(anchor && anchor.contains(event.target))) close();
+    }
+    function onKey(event) {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      const anchor = at();
+      close();
+      if (anchor) anchor.focus();
+    }
+    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', place);
+    closeTagPicker = close;
+
+    search.oninput = draw;
+    $('#tag-pop-close', pop).onclick = close;
+    $('#tag-pop-clear', pop).onclick = () => {
+      state.filters.tags.clear();
+      renderFilters();
+      renderList();
+      renderPromptList();
+      draw();
+    };
+    draw();
+    place();
+    search.focus();
   }
 
   function visibleSkills() {
@@ -294,14 +442,21 @@
         if (!skill.agents.includes(agent)) return false;
       }
       for (const tag of state.filters.tags) {
-        if (!skill.tags.includes(tag.replace(/^#/, ''))) return false;
+        if (!skill.tags.includes(tag)) return false;
       }
       return true;
     });
   }
 
+  /* "3 de 12" cuando hay filtros o búsqueda; el total a secas cuando no. */
+  function railCount(node, visible, total) {
+    node.textContent = visible === total ? String(total) : `${visible}/${total}`;
+    node.classList.toggle('filtered', visible !== total);
+  }
+
   function renderList() {
     const skills = visibleSkills();
+    railCount($('#skill-count'), skills.length, state.skills.length);
     if (!skills.length) {
       $('#skill-list').innerHTML = `<p class="list-empty">${
         state.skills.length ? 'Ninguna skill coincide' : 'Biblioteca vacía'}</p>`;
@@ -320,6 +475,14 @@
     $$('#skill-list .skill-card').forEach((node) => {
       node.onclick = () => openSkill(node.dataset.slug);
     });
+    revealSelected('#skill-list');
+  }
+
+  /* La lista ya no ocupa toda la barra: lo que abres desde el diálogo o desde
+     el buscador puede quedar fuera de la franja visible. */
+  function revealSelected(listSelector) {
+    const card = $(`${listSelector} .skill-card.on`);
+    if (card) card.scrollIntoView({ block: 'nearest' });
   }
 
   /* Los filtros de agente son cosa de las skills: mientras haya uno activo la
@@ -334,7 +497,7 @@
         if (!haystack.includes(query)) return false;
       }
       for (const tag of state.filters.tags) {
-        if (!prompt.tags.includes(tag.replace(/^#/, ''))) return false;
+        if (!prompt.tags.includes(tag)) return false;
       }
       return true;
     });
@@ -343,7 +506,10 @@
   function renderPromptList() {
     const prompts = visiblePrompts();
     $('#prompt-section').classList.toggle('hidden', prompts === null);
+    // Sin prompts a la vista, las skills se quedan con toda la barra.
+    $('#rail-lists').classList.toggle('solo', prompts === null);
     if (prompts === null) return;
+    railCount($('#prompt-count'), prompts.length, state.prompts.length);
     if (!prompts.length) {
       $('#prompt-list').innerHTML = `<p class="list-empty">${
         state.prompts.length ? 'Ningún prompt coincide' : 'Sin prompts'}</p>`;
@@ -371,6 +537,7 @@
         if (prompt) copyText(prompt.text, `“${prompt.name}” copiado`);
       };
     });
+    revealSelected('#prompt-list');
   }
 
   function renderEmptyStats() {
@@ -380,6 +547,138 @@
       <div><strong>${stats.prompts || 0}</strong><span>prompts</span></div>
       <div><strong>${stats.files}</strong><span>archivos</span></div>
       <div><strong>${Object.keys(stats.agents).filter((a) => a !== 'sin-agente').length}</strong><span>agentes</span></div>`;
+  }
+
+  /* ------------------------------------------------------------ explorador */
+  /* La barra lateral enseña una franja de cada biblioteca; este diálogo las
+     enseña enteras, en rejilla y con su propio buscador, sin tocar los filtros
+     que tengas puestos fuera. Elegir una ficha la abre y cierra el diálogo. */
+  const promptExcerpt = (text) => text.trim().replace(/\n\s*\n/g, '\n').slice(0, 220);
+
+  function matchesSkill(skill, query) {
+    if (!query) return true;
+    return [skill.name, skill.slug, skill.description, skill.tags.join(' '), skill.agents.join(' ')]
+      .join(' ').toLowerCase().includes(query);
+  }
+
+  function matchesPrompt(prompt, query) {
+    if (!query) return true;
+    return [prompt.name, prompt.slug, prompt.tags.join(' '), prompt.text]
+      .join(' ').toLowerCase().includes(query);
+  }
+
+  function browseModal(kind = 'skills') {
+    let tab = kind === 'prompts' ? 'prompts' : 'skills';
+    const tabButton = (key, label, icon, total) =>
+      `<button type="button" class="tab" data-btab="${key}">${ic(icon, 'ic-sm')}${label}<span class="count">${total}</span></button>`;
+
+    modal('Biblioteca', `
+      <div class="browse">
+        <div class="browse-bar">
+          <div class="browse-tabs">
+            ${tabButton('skills', 'Skills', 'logo', state.skills.length)}
+            ${tabButton('prompts', 'Prompts', 'prompt', state.prompts.length)}
+          </div>
+          <div class="search-row browse-search">
+            <span class="search-icon">${ic('search', 'ic-sm')}</span>
+            <input id="browse-search" type="search" autocomplete="off"
+                   placeholder="Filtrar la lista" aria-label="Filtrar la lista">
+          </div>
+        </div>
+        <div class="browse-grid" id="browse-grid"></div>
+        <p class="browse-foot" id="browse-foot"></p>
+      </div>`, (root, close) => {
+      const search = $('#browse-search', root);
+      const grid = $('#browse-grid', root);
+
+      const open = (item) => {
+        close();
+        if (tab === 'skills') openSkill(item);
+        else openPrompt(item);
+      };
+
+      const draw = () => {
+        const query = search.value.trim().toLowerCase();
+        $$('[data-btab]', root).forEach((node) => node.classList.toggle('on', node.dataset.btab === tab));
+        search.placeholder = tab === 'skills'
+          ? 'Filtrar por nombre, descripción, agente o etiqueta'
+          : 'Filtrar por nombre, etiqueta o contenido';
+
+        const skills = state.skills.filter((skill) => matchesSkill(skill, query));
+        const prompts = state.prompts.filter((prompt) => matchesPrompt(prompt, query));
+        const rows = tab === 'skills' ? skills : prompts;
+
+        if (!rows.length) {
+          grid.innerHTML = `<p class="list-empty">${
+            query ? 'Sin coincidencias' : (tab === 'skills' ? 'Biblioteca vacía' : 'Sin prompts')}</p>`;
+        } else if (tab === 'skills') {
+          grid.innerHTML = skills.map((skill) => `
+            <article class="skill-card${state.current && state.current.slug === skill.slug ? ' on' : ''}"
+                     tabindex="0" data-pick="${esc(skill.slug)}">
+              <h3>${esc(skill.name)}</h3>
+              <p>${esc(skill.description || 'Sin descripción')}</p>
+              <div class="meta">
+                ${skill.agents.map((a) => `<span class="tag agent">${esc(a)}</span>`).join('')}
+                ${skill.tags.slice(0, 4).map((t) => `<span class="tag">${ic('hash')}${esc(t)}</span>`).join('')}
+                ${skill.file_count > 1 ? `<span class="tag">${ic('file')}${skill.file_count}</span>` : ''}
+              </div>
+            </article>`).join('');
+        } else {
+          grid.innerHTML = prompts.map((prompt) => `
+            <article class="skill-card prompt-card${state.prompt && state.prompt.slug === prompt.slug ? ' on' : ''}"
+                     tabindex="0" data-pick="${esc(prompt.slug)}">
+              <h3>${esc(prompt.name)}</h3>
+              <p>${esc(promptExcerpt(prompt.text))}</p>
+              ${prompt.tags.length ? `<div class="meta">${
+                prompt.tags.slice(0, 4).map((t) => `<span class="tag">${ic('hash')}${esc(t)}</span>`).join('')}</div>` : ''}
+              <button class="icon card-copy" data-copy="${esc(prompt.slug)}"
+                      title="Copiar el prompt" aria-label="Copiar el prompt">${ic('copy', 'ic-sm')}</button>
+            </article>`).join('');
+        }
+
+        const total = tab === 'skills' ? state.skills.length : state.prompts.length;
+        const hint = rows.length ? (tab === 'skills' ? ' · Intro abre la primera' : ' · Intro abre el primero') : '';
+        $('#browse-foot', root).textContent =
+          `${rows.length} de ${total} ${tab === 'skills' ? 'skills' : 'prompts'}${hint}`;
+
+        $$('[data-pick]', grid).forEach((node) => {
+          node.onclick = (event) => {
+            if (event.target.closest('button')) return;
+            open(node.dataset.pick);
+          };
+          node.onkeydown = (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              open(node.dataset.pick);
+            }
+          };
+        });
+        $$('[data-copy]', grid).forEach((node) => {
+          node.onclick = () => {
+            const prompt = state.prompts.find((item) => item.slug === node.dataset.copy);
+            if (prompt) copyText(prompt.text, `“${prompt.name}” copiado`);
+          };
+        });
+      };
+
+      $$('[data-btab]', root).forEach((node) => {
+        node.onclick = () => { tab = node.dataset.btab; draw(); search.focus(); };
+      });
+      search.oninput = draw;
+      search.onkeydown = (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const first = $('[data-pick]', grid);
+          if (first) open(first.dataset.pick);
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          const first = $('[data-pick]', grid);
+          if (first) first.focus();
+        }
+      };
+      draw();
+    }, { className: 'wide' });
   }
 
   /* -------------------------------------------------------------- detail */
@@ -1214,8 +1513,12 @@
     $('#btn-import').onclick = importModal;
     $('#btn-export-all').onclick = () => { window.location.href = '/api/export'; };
     $('#btn-theme').onclick = cycleTheme;
+    $('#btn-tag-picker').onclick = () => openTagPicker('#btn-tag-picker');
+    $('#btn-browse-skills').onclick = () => browseModal('skills');
+    $('#btn-browse-prompts').onclick = () => browseModal('prompts');
     $('[data-action="new"]').onclick = newSkillModal;
     $('[data-action="new-prompt"]').onclick = newPromptModal;
+    $('[data-action="browse"]').onclick = () => browseModal('skills');
 
     applyTheme(themePref());
     prefersDark.addEventListener('change', () => {
@@ -1231,6 +1534,12 @@
       if (event.key.toLowerCase() === 't' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
         cycleTheme();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        // Con otro diálogo abierto el atajo calla: no se apilan modales.
+        // Se abre por donde estés mirando: si tienes un prompt delante, prompts.
+        if (!$('#modal-root .modal-backdrop')) browseModal(state.prompt ? 'prompts' : 'skills');
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();

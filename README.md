@@ -145,6 +145,9 @@ Con `--prompts-dir` o `SKILLSBOOK_PROMPTS` puedes ponerlos en otro sitio.
 - Marcar con qué agentes es compatible y etiquetarlas.
 - Filtrar por agente o etiqueta, buscar por nombre y descripción, o buscar texto **dentro** de
   todos los archivos de todas las skills.
+- Ver el listado completo en el **explorador** (`Ctrl/Cmd + K`, o el botón de la rejilla en las
+  cabeceras de Skills y de Prompts): un diálogo con las dos bibliotecas en rejilla, su propio
+  buscador y un clic para abrir lo que elijas.
 - Ver el `SKILL.md` renderizado como markdown: títulos, listas, tablas, código y citas.
 
 **En todo lo que sea markdown** — el contenido de una skill, un prompt, un `.md` del árbol de
@@ -171,6 +174,7 @@ puedes ver la vista previa sin perder lo que estabas escribiendo.
 | Tecla | Acción |
 | --- | --- |
 | `/` | Ir al buscador |
+| `Ctrl/Cmd + K` | Abrir el explorador con el listado completo |
 | `Intro` en el buscador | Buscar dentro del contenido de los archivos |
 | `Ctrl/Cmd + S` | Guardar el archivo o el formulario abierto |
 | `T` | Cambiar de tema: sistema → claro → oscuro |
@@ -193,6 +197,13 @@ Brutalismo moderno, en claro y en oscuro. Las reglas del sistema, por si tocas e
   `index.html` y heredan el color del texto. No hay emojis en la interfaz.
 - **Movimiento contenido.** Solo desplazamientos de 2 px con sombra dura al pasar por encima,
   y todo se desactiva con `prefers-reduced-motion`.
+
+- **La barra lateral no se desborda.** Los filtros enseñan los agentes y las etiquetas más
+  usadas; las demás viven en un desplegable con buscador (el chip `+N etiquetas` o el `#` de la
+  cabecera), y las que tengas activas se quedan siempre a la vista. Debajo, Skills y Prompts se
+  reparten el alto a partes iguales —ninguna lista pasa de la mitad ni le come el sitio a la
+  otra— y cada cabecera lleva su recuento y el botón que abre el explorador. Si un filtro de
+  agente aparta los prompts, las skills recuperan la barra entera.
 
 - **Dos temas, una sola tabla de color.** El botón del pie de la barra lateral (o la tecla `T`)
   recorre sistema → claro → oscuro. «Sistema» sigue al ajuste del escritorio, incluso si cambia

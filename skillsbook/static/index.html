@@ -89,6 +89,12 @@
   <symbol id="i-dot" viewBox="0 0 24 24">
     <path d="M7 7h10v10H7z"/>
   </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24">
+    <path d="M4 4h7v7H4z"/><path d="M13 4h7v7h-7z"/><path d="M4 13h7v7H4z"/><path d="M13 13h7v7h-7z"/>
+  </symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24">
+    <path d="M5 9l7 7 7-7"/>
+  </symbol>
   <symbol id="i-arrow-left" viewBox="0 0 24 24">
     <path d="M20 12H4"/><path d="M10 6l-6 6 6 6"/>
   </symbol>
@@ -141,22 +147,47 @@
         </button>
       </div>
 
-      <div class="rail-label"><span>Filtros</span><i></i></div>
-      <div id="filters" class="filters"></div>
+      <div id="filter-block" class="filter-block">
+        <div class="rail-label">
+          <span>Filtros</span><i></i>
+          <button id="btn-tag-picker" class="icon" title="Buscar entre todas las etiquetas" aria-label="Buscar entre todas las etiquetas">
+            <svg class="ic ic-sm"><use href="#i-hash"/></svg>
+          </button>
+        </div>
+        <div id="filters" class="filters"></div>
+      </div>
     </header>
 
-    <div class="rail-label list-label"><span>Skills</span><i></i></div>
-    <div id="skill-list" class="skill-list"></div>
+    <!-- Las dos bibliotecas se reparten la barra: cada una llega como mucho a
+         la mitad, y el botón de la rejilla abre el listado completo. -->
+    <div id="rail-lists" class="rail-lists">
+      <section id="skill-section" class="rail-section">
+        <div class="rail-label list-label">
+          <span>Skills</span>
+          <span id="skill-count" class="rail-count"></span>
+          <i></i>
+          <button id="btn-browse-skills" class="icon" title="Ver todas las skills (Ctrl+K)" aria-label="Ver todas las skills">
+            <svg class="ic ic-sm"><use href="#i-grid"/></svg>
+          </button>
+        </div>
+        <div id="skill-list" class="skill-list"></div>
+      </section>
 
-    <section id="prompt-section" class="prompt-section">
-      <div class="rail-label list-label">
-        <span>Prompts</span><i></i>
-        <button id="btn-new-prompt" class="icon" title="Nuevo prompt" aria-label="Nuevo prompt">
-          <svg class="ic ic-sm"><use href="#i-plus"/></svg>
-        </button>
-      </div>
-      <div id="prompt-list" class="prompt-list"></div>
-    </section>
+      <section id="prompt-section" class="rail-section prompt-section">
+        <div class="rail-label list-label">
+          <span>Prompts</span>
+          <span id="prompt-count" class="rail-count"></span>
+          <i></i>
+          <button id="btn-browse-prompts" class="icon" title="Ver todos los prompts (Ctrl+K)" aria-label="Ver todos los prompts">
+            <svg class="ic ic-sm"><use href="#i-grid"/></svg>
+          </button>
+          <button id="btn-new-prompt" class="icon" title="Nuevo prompt" aria-label="Nuevo prompt">
+            <svg class="ic ic-sm"><use href="#i-plus"/></svg>
+          </button>
+        </div>
+        <div id="prompt-list" class="prompt-list"></div>
+      </section>
+    </div>
 
     <footer class="sidebar-foot">
       <button id="btn-new" class="primary"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Nueva skill</button>
@@ -182,9 +213,11 @@
         <div class="empty-actions">
           <button class="primary" data-action="new"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Crear una skill</button>
           <button class="ghost" data-action="new-prompt"><svg class="ic ic-sm"><use href="#i-prompt"/></svg>Crear un prompt</button>
+          <button class="ghost" data-action="browse"><svg class="ic ic-sm"><use href="#i-grid"/></svg>Explorar la biblioteca</button>
         </div>
         <ul class="key-hints">
           <li><kbd>/</kbd><span>Buscador</span></li>
+          <li><kbd>Ctrl</kbd><kbd>K</kbd><span>Explorar la biblioteca</span></li>
           <li><kbd>Intro</kbd><span>Buscar en el contenido</span></li>
           <li><kbd>Ctrl</kbd><kbd>S</kbd><span>Guardar</span></li>
           <li><kbd>T</kbd><span>Tema claro / oscuro</span></li>

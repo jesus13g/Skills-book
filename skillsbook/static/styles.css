@@ -182,6 +182,16 @@ h1, h2, h3, h4 { font-family: var(--sans); font-weight: 700; }
 }
 .rail-label i { flex: 1; height: var(--hair); background: var(--line); }
 .list-label { padding: 10px 16px 6px; }
+.rail-count {
+  padding: 1px 5px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .08em;
+  color: var(--fg-3);
+  background: var(--sunken);
+  border: var(--hair) solid var(--line);
+}
+.rail-count.filtered { color: var(--acc); border-color: var(--acc-dim); }
 
 kbd {
   font-family: var(--mono);
@@ -279,13 +289,93 @@ kbd {
 }
 
 /* ---------------------------------------------------------------- filtros */
+/* Solo se enseñan los agentes y un puñado de etiquetas: la barra no puede
+   convertirse en un muro de chips. El resto vive en el desplegable. */
 .filters {
   display: flex; flex-wrap: wrap; gap: 5px;
   padding: 0 16px 14px;
-  max-height: 92px; overflow-y: auto;
 }
 .filters:empty { display: none; }
-.filters:empty + .rail-label { display: none; }
+
+/* Salto de renglón dentro del flujo de chips: separa agentes de etiquetas. */
+.chip-break { flex-basis: 100%; height: 0; }
+
+.chip.more { border-style: dashed; color: var(--fg-3); }
+.chip.more:hover { border-style: dashed; color: var(--fg); }
+.chip.more .ic { opacity: .7; }
+.chip.clear { border-color: var(--line); color: var(--fg-3); }
+.chip.clear:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-ghost); }
+
+/* ------------------------------------------------- desplegable de etiquetas */
+/* Va en position: fixed y colgado del <body> para que ni el recorte de la
+   barra ni su scroll lo corten. */
+.tag-pop {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 16px));
+  max-height: min(60vh, 420px);
+  background: var(--panel);
+  border: var(--rule) solid var(--line-3);
+  box-shadow: var(--shadow-modal);
+  animation: pop 160ms cubic-bezier(.2,.8,.2,1);
+}
+.tag-pop-head {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px 6px 0;
+  border-bottom: var(--rule) solid var(--line);
+  background: var(--sunken) var(--hatch);
+}
+.tag-pop-head input {
+  flex: 1; min-width: 0;
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.tag-pop-head input:focus { outline: none; }
+.tag-pop-head input::-webkit-search-cancel-button { filter: var(--cancel-filter); }
+
+.tag-pop-list { display: grid; gap: 2px; padding: 6px; overflow-y: auto; min-height: 0; }
+.tag-pop-list .list-empty { padding: 18px 10px; }
+.tag-row {
+  display: flex; align-items: center; gap: 8px;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 5px 8px;
+  border: var(--hair) solid transparent;
+  background: transparent;
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: .02em;
+}
+.tag-row:hover {
+  color: var(--fg); background: var(--raise); border-color: var(--line);
+  transform: none; box-shadow: none;
+}
+.tag-row.on { color: var(--acc); background: var(--acc-ghost); border-color: var(--acc); font-weight: 700; }
+.tag-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.tag-row .name::before { content: "#"; color: var(--fg-3); margin-right: 1px; }
+.tag-row .count { font-size: 10px; color: var(--fg-3); }
+.tag-row > .ic { opacity: 0; }
+.tag-row.on > .ic { opacity: 1; }
+
+.tag-pop-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px;
+  border-top: var(--hair) solid var(--line);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--fg-3);
+}
+.tag-pop-foot button { margin-left: auto; padding: 5px 9px; font-size: 10px; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
@@ -310,19 +400,28 @@ kbd {
 }
 .chip .count { opacity: .55; }
 
-/* ----------------------------------------------------------- lista skills */
-.skill-list { flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0; }
-
-/* Las dos bibliotecas comparten la barra: las skills se quedan con el sitio
-   que sobra y los prompts nunca pasan de poco menos de la mitad. */
-.prompt-section {
+/* -------------------------------------------------- listas de la barra */
+/* Las dos bibliotecas comparten la barra a partes iguales: ninguna pasa de la
+   mitad, así que una lista larga ya no se come a la otra. Cuando los prompts
+   se apartan (hay un filtro de agente), las skills recuperan la barra entera.
+   Lo que no cabe se ve completo en el diálogo del explorador. */
+.rail-lists {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
-  max-height: 45%;
-  border-top: var(--rule) solid var(--line);
 }
-.prompt-list { flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0; }
+.rail-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 50%;
+}
+.rail-lists.solo .rail-section { max-height: none; }
+.prompt-section { border-top: var(--rule) solid var(--line); }
+
+.skill-list, .prompt-list { flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0; }
 .rail-label button.icon { margin-left: -4px; padding: 3px; }
 
 .prompt-card { padding-right: 34px; }
@@ -985,12 +1084,14 @@ textarea.code:focus { outline: none; background: var(--sunken); }
   border-bottom: var(--rule) solid var(--line);
   background: var(--sunken) var(--hatch);
 }
-.modal h3 {
+/* Solo el título del diálogo: dentro del cuerpo puede haber h3 de fichas y no
+   deben heredar ni la caja naranja ni las versales. */
+.modal-head h3 {
   margin: 0;
   font-size: 13px; font-weight: 800;
   text-transform: uppercase; letter-spacing: .04em;
 }
-.modal h3::before {
+.modal-head h3::before {
   content: "";
   display: inline-block;
   width: 8px; height: 8px;
@@ -1000,6 +1101,51 @@ textarea.code:focus { outline: none; background: var(--sunken); }
 }
 .modal-body { padding: 22px 20px; }
 .modal-body > .muted { margin: 0 0 20px; font-size: 13.5px; line-height: 1.55; }
+.modal.wide { width: min(1020px, 100%); }
+
+/* --------------------------------------------------------- explorador */
+/* El listado entero, en rejilla: lo que la barra lateral recorta se ve aquí
+   de una vez, con su buscador y sin heredar los filtros de fuera. */
+.browse { display: flex; flex-direction: column; gap: 16px; }
+.browse-bar { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; }
+.browse-tabs { display: flex; flex: none; }
+.browse-tabs .tab {
+  bottom: 0;
+  padding: 8px 15px;
+  border: var(--rule) solid var(--line);
+  margin-right: -2px;
+}
+.browse-tabs .tab .count {
+  padding: 0 4px;
+  font-size: 10px;
+  color: var(--fg-3);
+  background: var(--sunken);
+  border: var(--hair) solid var(--line);
+}
+.browse-tabs .tab.on .count { color: var(--acc-ink); background: transparent; border-color: var(--acc-ink); }
+.browse-search { flex: 1; min-width: 220px; margin: 0; }
+
+.browse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+  align-content: start;
+  max-height: 54vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+.browse-grid .skill-card { margin-bottom: 0; }
+.browse-grid .prompt-card .card-copy { opacity: 1; }
+.browse-grid .list-empty { grid-column: 1 / -1; }
+
+.browse-foot {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  color: var(--fg-3);
+}
 
 /* ----------------------------------------------------------------- toasts */
 .toasts {
@@ -1056,12 +1202,13 @@ textarea.code:focus { outline: none; background: var(--sunken); }
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 1000px) {
   #app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
-  .sidebar { max-height: 52vh; border-right: none; border-bottom: var(--rule) solid var(--line-2); }
-  .filters { max-height: 62px; }
-  /* Con la barra a media pantalla, los prompts se quedan con una franja fija
-     y el botón de copiar deja de esconderse: aquí no hay hover que valga. */
-  .prompt-section { max-height: 38%; }
+  .sidebar { max-height: 62vh; border-right: none; border-bottom: var(--rule) solid var(--line-2); }
+  /* Con la barra a media pantalla queda poco sitio: menos etiquetas a la vista
+     (las demás siguen en el desplegable) y el botón de copiar deja de
+     esconderse, que aquí no hay hover que valga. */
+  .filters { max-height: 64px; overflow-y: auto; }
   .prompt-card .card-copy { opacity: 1; }
+  .browse-grid { max-height: 46vh; }
   .files { grid-template-columns: 1fr; }
   .tab-body, .detail-head { padding-left: 20px; padding-right: 20px; }
   .detail-title { flex-wrap: wrap; }
